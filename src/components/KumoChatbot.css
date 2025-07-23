@@ -1,0 +1,320 @@
+.kumo-chatbot-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  backdrop-filter: blur(5px);
+}
+
+.kumo-chatbot-container {
+  width: 90%;
+  max-width: 500px;
+  height: 80vh;
+  max-height: 600px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 20px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.kumo-chatbot-header {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  color: white;
+  position: relative;
+}
+
+.kumo-avatar {
+  width: 50px;
+  height: 50px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(10px);
+}
+
+.kumo-profile-pic {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+}
+
+.kumo-header-text h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.kumo-header-text p {
+  margin: 0;
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.kumo-close-btn {
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: all 0.3s ease;
+}
+
+.kumo-close-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateY(-50%) scale(1.1);
+}
+
+.kumo-messages {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  background: rgba(255, 255, 255, 0.95);
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.kumo-messages::-webkit-scrollbar {
+  width: 6px;
+}
+
+.kumo-messages::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+}
+
+.kumo-messages::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
+}
+
+.kumo-message {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  animation: fadeInUp 0.3s ease;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.user-message {
+  flex-direction: row-reverse;
+}
+
+.assistant-message {
+  flex-direction: row;
+}
+
+.kumo-avatar-small {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.kumo-profile-pic-small {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+}
+
+.message-content {
+  background: white;
+  padding: 12px 16px;
+  border-radius: 18px;
+  max-width: 70%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  line-height: 1.4;
+  font-size: 14px;
+  color: #333;
+}
+
+.user-message .message-content {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.assistant-message .message-content {
+  background: white;
+  color: #333;
+}
+
+.typing-indicator {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.typing-indicator span {
+  width: 8px;
+  height: 8px;
+  background: #ff6b6b;
+  border-radius: 50%;
+  animation: typing 1.4s infinite ease-in-out;
+}
+
+.typing-indicator span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes typing {
+  0%, 80%, 100% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.kumo-input-container {
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.kumo-input {
+  flex: 1;
+  border: 2px solid rgba(102, 126, 234, 0.3);
+  border-radius: 20px;
+  padding: 12px 16px;
+  font-size: 14px;
+  resize: none;
+  outline: none;
+  transition: all 0.3s ease;
+  font-family: inherit;
+  line-height: 1.4;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+.kumo-input:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.kumo-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.kumo-send-btn {
+  width: 44px;
+  height: 44px;
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+  border: none;
+  border-radius: 50%;
+  color: white;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+}
+
+.kumo-send-btn:hover:not(:disabled) {
+  transform: scale(1.05);
+  box-shadow: 0 6px 16px rgba(255, 107, 107, 0.4);
+}
+
+.kumo-send-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .kumo-chatbot-container {
+    width: 95%;
+    height: 90vh;
+    max-height: none;
+  }
+  
+  .kumo-chatbot-header {
+    padding: 15px;
+  }
+  
+  .kumo-messages {
+    padding: 15px;
+  }
+  
+  .kumo-input-container {
+    padding: 15px;
+  }
+  
+  .message-content {
+    max-width: 85%;
+  }
+}
+
+/* Animation for opening */
+.kumo-chatbot-container {
+  animation: slideInUp 0.3s ease;
+}
+
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+} 
