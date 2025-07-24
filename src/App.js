@@ -3,84 +3,204 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Loader } from '@googlemaps/js-api-loader';
 import KumoChatbot from './components/KumoChatbot';
 import ChatButton from './components/ChatButton';
+import TextType from './components/TextType';
 import './App.css';
 
 // API Keys
 const GOOGLE_MAPS_API_KEY = 'AIzaSyCW9G1CBbrs87Gb9gUbhaYpwB0mnpQUGf4';
 const OPENAI_API_KEY = process.env.REACT_APP_OPENAI_API_KEY || 'your-openai-api-key-here';
-const AMADEUS_CLIENT_ID = 'ARLUoeYjlYUGNltpXpxzFkHKAwHmENTp';
-const AMADEUS_CLIENT_SECRET = '09S2uNz8WczvI0Fd';
 const MONGODB_URI = 'mongodb+srv://winvarit:12345@cluster0.uhgsfzc.mongodb.net/';
 
-// Token cache
-let amadeusTokenCache = {
-  token: null,
-  expiresAt: null
+// Travel Advisor API function
+const searchHotelsByGeocode = async (latitude, longitude, budgetLevel = 3) => {
+  console.log('🏨 Searching hotels with Travel Advisor API...');
+  console.log('📍 Coordinates:', latitude, longitude);
+  console.log('💰 Budget level:', budgetLevel);
+  
+  try {
+    // Use the correct GET endpoint with proper parameters
+    const url = `https://travel-advisor.p.rapidapi.com/hotels/list-by-latlng?latitude=${latitude}&longitude=${longitude}&lang=en_US&currency=USD`;
+    
+    console.log('🌐 Making request to:', url);
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'X-RapidAPI-Key': 'dd41c3b481msh51c9e846214042ap1395aejsn98d3615f27bb',
+        'X-RapidAPI-Host': 'travel-advisor.p.rapidapi.com'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Travel Advisor API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Travel Advisor API response received');
+    console.log('📦 Response structure:', Object.keys(data));
+    console.log('📦 Data array length:', data.data ? data.data.length : 'No data array');
+    
+    // Check for hotel data in the expected structure
+    let hotels = [];
+    
+    if (data.data && Array.isArray(data.data)) {
+      hotels = data.data;
+      console.log(`🏨 Found ${hotels.length} hotels in data.data`);
+    } else if (data.results && Array.isArray(data.results)) {
+      hotels = data.results;
+      console.log(`🏨 Found ${hotels.length} hotels in data.results`);
+    } else if (data.hotels && Array.isArray(data.hotels)) {
+      hotels = data.hotels;
+      console.log(`🏨 Found ${hotels.length} hotels in data.hotels`);
+    } else if (Array.isArray(data)) {
+      hotels = data;
+      console.log(`🏨 Found ${hotels.length} hotels in root array`);
+    } else {
+      console.log('⚠️ No hotel data found in any expected structure');
+      console.log('📦 Available keys in response:', Object.keys(data));
+      console.log('📦 Full response preview:', JSON.stringify(data, null, 2).substring(0, 500) + '...');
+      return [];
+    }
+    
+    if (hotels.length > 0) {
+      // First, try to filter hotels based on budget level
+      const targetHotels = hotels.filter(hotel => {
+        const hotelClass = parseFloat(hotel.hotel_class) || 0;
+        
+        // Map budget levels to hotel classes
+        // Budget level 1 (Budget): hotel_class 1-2
+        // Budget level 2 (Economy): hotel_class 2-3
+        // Budget level 3 (Mid-range): hotel_class 3-4
+        // Budget level 4 (Luxury): hotel_class 4-5
+        // Budget level 5 (Ultra-luxury): hotel_class 5
+        let minClass, maxClass;
+        
+        switch (budgetLevel) {
+          case 1: // Budget
+            minClass = 1;
+            maxClass = 2;
+            break;
+          case 2: // Economy
+            minClass = 2;
+            maxClass = 3;
+            break;
+          case 3: // Mid-range
+            minClass = 3;
+            maxClass = 4;
+            break;
+          case 4: // Luxury
+            minClass = 4;
+            maxClass = 5;
+            break;
+          case 5: // Ultra-luxury
+            minClass = 5;
+            maxClass = 5;
+            break;
+          default:
+            minClass = 1;
+            maxClass = 5;
+        }
+        
+        const isInBudget = hotelClass >= minClass && hotelClass <= maxClass;
+        
+        if (isInBudget) {
+          console.log(`✅ Hotel "${hotel.name}" (Class ${hotelClass}) matches budget level ${budgetLevel}`);
+        } else {
+          console.log(`❌ Hotel "${hotel.name}" (Class ${hotelClass}) doesn't match budget level ${budgetLevel}`);
+        }
+        
+        return isInBudget;
+      });
+      
+      console.log(`💰 Budget filtering: ${hotels.length} total hotels → ${targetHotels.length} matching budget level ${budgetLevel}`);
+      
+      // If no hotels found in target budget, try lower classes
+      let finalHotels = targetHotels;
+      if (targetHotels.length === 0) {
+        console.log(`⚠️ No hotels found for budget level ${budgetLevel}, trying lower classes...`);
+        
+        // Try progressively lower classes
+        const fallbackClasses = [];
+        switch (budgetLevel) {
+          case 5: // Ultra-luxury → try luxury, then mid-range, etc.
+            fallbackClasses.push(4, 3, 2, 1);
+            break;
+          case 4: // Luxury → try mid-range, economy, budget
+            fallbackClasses.push(3, 2, 1);
+            break;
+          case 3: // Mid-range → try economy, budget
+            fallbackClasses.push(2, 1);
+            break;
+          case 2: // Economy → try budget
+            fallbackClasses.push(1);
+            break;
+          case 1: // Budget → already at lowest, show all
+            fallbackClasses.push(1, 2, 3, 4, 5);
+            break;
+        }
+        
+        for (const classLevel of fallbackClasses) {
+          const fallbackHotels = hotels.filter(hotel => {
+            const hotelClass = parseFloat(hotel.hotel_class) || 0;
+            return hotelClass === classLevel;
+          });
+          
+          if (fallbackHotels.length > 0) {
+            console.log(`✅ Found ${fallbackHotels.length} hotels in class ${classLevel} as fallback`);
+            finalHotels = fallbackHotels;
+            break;
+          }
+        }
+        
+        if (finalHotels.length === 0) {
+          console.log(`⚠️ No hotels found in any class, showing all available hotels`);
+          finalHotels = hotels;
+        }
+      }
+      
+      // Log hotel details for final hotels
+      finalHotels.forEach((hotel, index) => {
+        console.log(`🏨 Hotel ${index + 1}:`);
+        console.log(`   Name: ${hotel.name || 'N/A'}`);
+        console.log(`   Rating: ${hotel.rating || 'N/A'}`);
+        console.log(`   Hotel Class: ${hotel.hotel_class || 'N/A'}`);
+        console.log(`   Reviews: ${hotel.num_reviews || 'N/A'}`);
+        console.log(`   Location: ${hotel.location_string || 'N/A'}`);
+        console.log(`   Coordinates: ${hotel.latitude}, ${hotel.longitude}`);
+        
+        // Log photo URL if available
+        if (hotel.photo && hotel.photo.images && hotel.photo.images.original && hotel.photo.images.original.url) {
+          console.log(`   Photo URL: ${hotel.photo.images.original.url}`);
+        } else {
+          console.log(`   Photo URL: Not available`);
+        }
+        console.log('---');
+      });
+      
+      return finalHotels;
+    } else {
+      console.log('⚠️ No hotels found in response');
+      console.log('🔍 This might be because:');
+      console.log('   - Coordinates are too far from city center');
+      console.log('   - No hotels in this area');
+      console.log('   - API rate limit or temporary issue');
+      return [];
+    }
+  } catch (error) {
+    console.error('❌ Error fetching hotels from Travel Advisor API:', error);
+    return [];
+  }
 };
 
+// Token cache
 // Debug API key status
 console.log('🔑 OpenAI API Key Status:', OPENAI_API_KEY !== 'your-openai-api-key-here' ? '✅ Configured' : '❌ Not configured');
 console.log('🌤️ Open-Meteo API Status:', '✅ Free - No API key required');
 console.log('🗺️ Google Maps API Key Status:', '✅ Configured');
-console.log('🏨 Amadeus API Status:', '✅ Configured');
+console.log('🏨 Travel Advisor API Status:', '✅ Configured');
 console.log('🗄️ MongoDB URI Status:', MONGODB_URI ? '✅ Configured' : '❌ Not configured');
 
-// Amadeus OAuth2 Token function
-const getAmadeusToken = async () => {
-  // Check if we have a valid cached token
-  const now = Date.now();
-  if (amadeusTokenCache.token && amadeusTokenCache.expiresAt && now < amadeusTokenCache.expiresAt) {
-    console.log('🔑 Using cached Amadeus token (expires in', Math.round((amadeusTokenCache.expiresAt - now) / 1000), 'seconds)');
-    return amadeusTokenCache.token;
-  }
 
-  console.log('🔑 Getting new Amadeus OAuth2 token...');
-  console.log('🔑 Client ID:', AMADEUS_CLIENT_ID);
-  console.log('🔑 Client Secret:', AMADEUS_CLIENT_SECRET ? '***configured***' : 'NOT CONFIGURED');
-  
-  try {
-    const tokenUrl = 'https://test.api.amadeus.com/v1/security/oauth2/token';
-    const tokenBody = new URLSearchParams({
-      grant_type: 'client_credentials',
-      client_id: AMADEUS_CLIENT_ID,
-      client_secret: AMADEUS_CLIENT_SECRET
-    });
-    
-    console.log('🔑 Token request URL:', tokenUrl);
-    console.log('🔑 Token request body:', tokenBody.toString());
-    
-    const response = await fetch(tokenUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: tokenBody
-    });
-
-    console.log('🔑 Token response status:', response.status);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ Token request failed:', errorText);
-      throw new Error(`Token request failed: ${response.status}`);
-    }
-
-    const tokenData = await response.json();
-    console.log('✅ Amadeus token obtained successfully');
-    console.log('✅ Token expires in:', tokenData.expires_in, 'seconds');
-    
-    // Cache the token with expiration (subtract 60 seconds for safety)
-    amadeusTokenCache = {
-      token: tokenData.access_token,
-      expiresAt: now + (tokenData.expires_in - 60) * 1000
-    };
-    
-    return tokenData.access_token;
-  } catch (error) {
-    console.error('❌ Error getting Amadeus token:', error);
-    return null;
-  }
-};
 
 // OpenAI API function
 const generateAIContent = async (city, type) => {
@@ -265,128 +385,90 @@ const generateCustomPlan = async (cityName, planningData, weather, attractions) 
       5: 'Ultra-luxury ($$$$$)'
     };
 
-    const prompt = `🧠 Advanced AI Travel Planner Request
+    const prompt = `You are an advanced AI travel planner. Generate a comprehensive, realistic travel plan with ALL required fields. Use this EXACT JSON structure:
 
-DESTINATION: ${cityName}
-TRAVEL DATES: ${planningData.startDate} to ${planningData.endDate}
-PARTY SIZE: ${planningData.partySize} people
-TRAVELER TYPE: ${planningData.travelerType} (${planningData.travelerType === 'single' ? 'solo adventurer' : planningData.travelerType === 'couple' ? 'romantic getaway' : planningData.travelerType === 'family' ? 'kid-friendly fun' : 'friends & fun'})
-BUDGET LEVEL: ${planningData.budget}/5 (${budgetLabels[planningData.budget]})
-INTERESTS: ${planningData.interests.length > 0 ? planningData.interests.join(', ') : 'general tourism'}
-${planningData.userAdjustments ? `USER ADJUSTMENTS: ${planningData.userAdjustments}` : ''}
-
-WEATHER DATA: ${JSON.stringify(weather)}
-TOP ATTRACTIONS: ${attractions.map(a => a.name).join(', ')}
-
-📅 DATE ANALYSIS:
-- If dates are in the future: Use historical weather data for that time period
-- If dates are in the past: Use historical weather patterns
-- Consider seasonal activities and events for the travel dates
-- Account for daylight hours and seasonal tourism patterns
-
-🌤️ WEATHER INTEGRATION:
-- Adapt activities based on weather conditions
-- Suggest indoor alternatives for rainy days
-- Consider temperature for outdoor activities
-- Plan appropriate clothing and gear recommendations
-
-👥 TRAVELER TYPE CONSIDERATIONS:
-- Solo: Flexible schedules, immersive experiences, social opportunities
-- Couple: Romantic settings, balanced activities, intimate dining
-- Family: Kid-friendly venues, educational activities, safety considerations
-- Group: Social activities, group discounts, shared experiences
-
-🎯 INTERESTS INTEGRATION:
-- Food & Dining: Local cuisine, food tours, cooking classes, restaurant recommendations
-- Nature & Outdoors: Parks, hiking trails, wildlife experiences, outdoor activities
-- Nightlife: Bars, clubs, entertainment venues, evening activities
-- Culture & History: Historical sites, traditional experiences, local customs
-- Museums & Arts: Art galleries, museums, cultural exhibitions, creative experiences
-- Golf & Sports: Golf courses, sports facilities, athletic activities
-
-💰 BUDGET INTEGRATION:
-- Accommodation: Match budget to hotel type and location
-- Dining: Street food vs restaurants based on budget
-- Activities: Free attractions vs paid experiences
-- Transport: Public transit vs private options
-
-Please create a comprehensive travel plan following this exact JSON format:
 {
-  "summary": "3-4 sentence overview considering dates, weather, traveler type, and budget",
-  "group_type": "solo/couple/friends/family based on party size",
-  "seasonal_notes": "seasonal considerations for the travel dates",
-  "weather_adaptations": "how weather affects the itinerary",
+  "summary": "Create an engaging, detailed trip overview that includes: 1) What makes this destination special, 2) What type of experience this trip will offer (cultural, adventure, relaxation, etc.), 3) Key highlights and unique experiences planned, 4) How the trip is tailored to the traveler type and interests. Make it exciting and informative.",
+  "seasonal_notes": "Provide detailed seasonal context including: 1) Current season and typical weather patterns, 2) Peak vs off-peak considerations, 3) Seasonal events or festivals, 4) Crowd levels and pricing implications, 5) Best activities for this time of year",
+  "weather_adaptations": "Give specific weather-based recommendations including: 1) Current weather conditions and patterns, 2) What to pack and wear, 3) Indoor vs outdoor activity adjustments, 4) Transportation considerations for weather, 5) Backup plans for weather-dependent activities",
   "accommodation": {
-    "recommendations": ["specific hotel/guesthouse names with brief descriptions"],
-    "budget_range": "price range per night for this budget level",
-    "location_tips": "neighborhood recommendations",
-    "booking_tips": "advice for this group size and budget"
+    "recommendations": ["Hotel 1 name", "Hotel 2 name", "Hotel 3 name"],
+    "budget_range": "Price range per night",
+    "location_tips": "Best areas to stay",
+    "booking_tips": "How to book and when",
+    "tips": "General accommodation advice"
   },
   "itinerary": [
     {
       "day": "Day 1",
-      "date": "actual date",
-      "weather_forecast": "expected weather for this day",
+      "date": "YYYY-MM-DD",
+      "activities": ["Activity 1", "Activity 2", "Activity 3"],
+      "meals": {
+        "breakfast": "Breakfast recommendation",
+        "lunch": "Lunch recommendation", 
+        "dinner": "Dinner recommendation"
+      },
+      "transport": "Transportation method",
       "morning": {
         "time": "9:00 AM",
-        "activity": "specific activity with exact location",
-        "transport": "detailed transport instructions",
-        "weather_consideration": "how weather affects this activity"
+        "activity": "Morning activity",
+        "transport": "How to get there",
+        "weather_consideration": "Weather note if relevant"
       },
       "afternoon": {
         "time": "2:00 PM", 
-        "activity": "specific activity with exact location",
-        "transport": "detailed transport instructions",
-        "weather_consideration": "how weather affects this activity"
+        "activity": "Afternoon activity",
+        "transport": "How to get there",
+        "weather_consideration": "Weather note if relevant"
       },
       "evening": {
         "time": "7:00 PM",
-        "activity": "specific activity with exact location", 
-        "transport": "detailed transport instructions",
-        "weather_consideration": "how weather affects this activity"
+        "activity": "Evening activity", 
+        "transport": "How to get there",
+        "weather_consideration": "Weather note if relevant"
       },
-      "meals": {
-        "breakfast": "specific restaurant name, type, and why recommended",
-        "lunch": "specific restaurant name, type, and why recommended",
-        "dinner": "specific restaurant name, type, and why recommended"
-      },
-      "flow_tips": "efficient route planning and timing",
-      "budget_notes": "cost considerations for this day"
+      "flow_tips": "Tips for smooth day flow",
+      "budget_notes": "Budget considerations for this day"
     }
   ],
   "budget_breakdown": {
-    "accommodation": "detailed cost breakdown for the group",
-    "food": "daily meal costs for the group", 
-    "activities": "entrance fees and experience costs",
-    "transport": "daily transport costs",
-    "miscellaneous": "unexpected costs and tips",
-    "total": "total estimated cost for the entire trip"
+    "accommodation": "Provide realistic total accommodation cost based on budget level and trip duration. Include price range and booking recommendations.",
+    "food": "Calculate total food cost based on budget level, party size, and trip duration. Include daily meal estimates and dining recommendations.",
+    "activities": "Estimate total activities cost including attractions, tours, and experiences. Consider budget level and group size.",
+    "transport": "Calculate total transportation costs including airport transfers, local transport, and any special transport needs.",
+    "total": "Sum of all costs with breakdown explanation"
   },
   "weather_preparation": [
-    "clothing recommendations based on weather",
-    "gear suggestions for activities",
-    "backup plans for weather-dependent activities"
+    "Provide 5-7 specific, detailed weather preparation items based on the destination's climate, current weather data, and season. Include specific clothing recommendations, gear suggestions, and weather-adaptive strategies. Make each item actionable and specific to the destination and travel dates."
   ],
   "pro_tips": [
-    "seasonal booking advice for the travel dates",
-    "weather-appropriate packing tips",
-    "group-specific local etiquette",
-    "budget optimization for this traveler type",
-    "seasonal event or festival information"
+    "Provide 5-7 destination-specific pro tips that combine local knowledge, budget considerations, and practical travel advice. Include insider tips, money-saving strategies, timing advice, and unique experiences. Make each tip specific to the destination, traveler type, and budget level."
   ]
 }
 
-🎯 CRITICAL REQUIREMENTS:
-1. Use historical weather data if travel dates are in the future
-2. Consider seasonal tourism patterns and local events
-3. Adapt activities based on weather conditions
-4. Match accommodation and dining to budget level
-5. Provide specific, bookable recommendations
-6. Include weather-appropriate clothing and gear advice
-7. Consider group dynamics and safety
-8. Optimize for the specific traveler type preferences
-9. Prioritize activities based on selected interests
-10. Include interest-specific recommendations and experiences`;
+## CONTEXT
+DESTINATION: ${cityName}
+TRAVEL DATES: ${planningData.startDate} to ${planningData.endDate}
+PARTY SIZE: ${planningData.partySize} people
+TRAVELER TYPE: ${planningData.travelerType}
+BUDGET LEVEL: ${planningData.budget}/5 (${budgetLabels[planningData.budget]})
+INTERESTS: ${planningData.interests.length > 0 ? planningData.interests.join(', ') : 'general tourism'}
+WEATHER DATA: ${JSON.stringify(weather)}
+TOP ATTRACTIONS: ${attractions.map(a => a.name).join(', ')}
+
+## REQUIREMENTS
+1. Fill ALL fields in the JSON structure above with detailed, specific content
+2. Use real hotel names, restaurant names, and attraction names from the destination
+3. Provide specific, actionable advice tailored to the traveler type and budget level
+4. Consider weather, season, group size, and budget in ALL recommendations
+5. Make recommendations bookable and practical for the specific destination
+6. Include 3-5 days in itinerary based on trip duration with realistic timing
+7. Provide detailed budget breakdown with realistic costs based on budget level and destination
+8. Include comprehensive weather preparation items based on destination climate and current weather data
+9. Create destination-specific pro tips that combine local knowledge with practical travel advice
+10. Ensure all content is highly personalized to the destination, dates, and traveler preferences
+
+Respond ONLY with valid JSON matching the structure above.`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -673,7 +755,9 @@ const getMockCustomPlan = (cityName, planningData) => {
   };
 
   return {
-    summary: `Your personalized ${budgetLabels[planningData.budget]} trip to ${cityName} for ${planningData.partySize} people from ${planningData.startDate} to ${planningData.endDate}. This carefully crafted itinerary balances must-see attractions with authentic local experiences.`,
+    summary: `Embark on an unforgettable ${budgetLabels[planningData.budget]} adventure to ${cityName} for ${planningData.partySize} ${planningData.partySize === 1 ? 'traveler' : 'travelers'} from ${planningData.startDate} to ${planningData.endDate}. This meticulously crafted journey combines ${cityName}'s most iconic landmarks with hidden gems and authentic local experiences. You'll discover the city's rich cultural heritage, vibrant street life, and world-renowned cuisine while immersing yourself in the local way of life. Whether you're exploring ancient temples, navigating bustling markets, or savoring street food delicacies, every moment is designed to create lasting memories.`,
+    seasonal_notes: `${cityName} experiences distinct seasonal patterns that shape your travel experience. During your visit, you'll encounter ${cityName}'s characteristic climate with its unique charm. This season offers optimal conditions for outdoor exploration while providing comfortable temperatures for extended sightseeing. You'll benefit from moderate crowd levels, allowing for more intimate experiences at popular attractions. Seasonal events and local festivals may enhance your cultural immersion, while accommodation rates remain competitive. This timing ensures you can fully appreciate ${cityName}'s outdoor markets, temple visits, and street food adventures without weather-related disruptions.`,
+    weather_adaptations: `Prepare for ${cityName}'s dynamic weather patterns with smart packing and flexible planning. Pack lightweight, breathable clothing for daytime exploration, with a light jacket or sweater for cooler evenings. Comfortable walking shoes are essential for navigating the city's diverse terrain. Carry a compact umbrella for unexpected rain showers, and consider a sun hat and sunscreen for protection during outdoor activities. Plan indoor activities as weather backup options, such as museum visits or shopping centers. Stay hydrated throughout the day, especially during outdoor temple visits and market explorations. Monitor local weather updates to adjust your daily itinerary accordingly.`,
     accommodation: {
       recommendations: [
         `${cityName} Central Hotel`,
@@ -681,7 +765,9 @@ const getMockCustomPlan = (cityName, planningData) => {
         `${cityName} Comfort Suites`
       ],
       budget_range: planningData.budget <= 2 ? "$50-100/night" : planningData.budget <= 3 ? "$100-200/night" : "$200-400/night",
-      tips: "Book accommodations in the city center for easy access to attractions and public transportation."
+      location_tips: "Book accommodations in the city center for easy access to attractions and public transportation.",
+      booking_tips: "Book 2-3 months in advance for best rates and availability.",
+      tips: "Choose hotels with good reviews and convenient location."
     },
     itinerary: [
       {
@@ -697,7 +783,27 @@ const getMockCustomPlan = (cityName, planningData) => {
           lunch: "Local café",
           dinner: "Traditional restaurant"
         },
-        transport: "Walking and public transportation"
+        transport: "Walking and public transportation",
+        morning: {
+          time: "9:00 AM",
+          activity: "Hotel check-in and orientation",
+          transport: "Taxi from airport",
+          weather_consideration: "Light jacket recommended"
+        },
+        afternoon: {
+          time: "2:00 PM",
+          activity: "City center exploration",
+          transport: "Walking",
+          weather_consideration: "Sunscreen and hat needed"
+        },
+        evening: {
+          time: "7:00 PM",
+          activity: "Traditional dinner experience",
+          transport: "Walking",
+          weather_consideration: "Evening breeze, light sweater"
+        },
+        flow_tips: "Start with orientation to get familiar with the area",
+        budget_notes: "Budget for airport transfer and first day meals"
       },
       {
         day: "Day 2",
@@ -712,7 +818,27 @@ const getMockCustomPlan = (cityName, planningData) => {
           lunch: "Street food experience",
           dinner: "Fine dining restaurant"
         },
-        transport: "Metro and walking"
+        transport: "Metro and walking",
+        morning: {
+          time: "9:00 AM",
+          activity: "Museum visits",
+          transport: "Metro",
+          weather_consideration: "Indoor activities if rain"
+        },
+        afternoon: {
+          time: "2:00 PM",
+          activity: "Local market shopping",
+          transport: "Walking",
+          weather_consideration: "Stay hydrated"
+        },
+        evening: {
+          time: "7:00 PM",
+          activity: "Fine dining experience",
+          transport: "Taxi",
+          weather_consideration: "Dress appropriately"
+        },
+        flow_tips: "Combine indoor and outdoor activities",
+        budget_notes: "Allocate budget for shopping and dining"
       }
     ],
     budget_breakdown: {
@@ -722,7 +848,13 @@ const getMockCustomPlan = (cityName, planningData) => {
       transport: "$50",
       total: planningData.budget <= 2 ? "$500" : planningData.budget <= 3 ? "$950" : "$1850"
     },
-    tips: [
+    weather_preparation: [
+      "Check weather forecast before packing",
+      "Bring appropriate clothing for the season",
+      "Pack rain gear if needed",
+      "Consider local climate patterns"
+    ],
+    pro_tips: [
       "Book attractions in advance to avoid long queues",
       "Use public transportation to save money",
       "Try local cuisine for authentic experiences",
@@ -732,320 +864,177 @@ const getMockCustomPlan = (cityName, planningData) => {
   };
 };
 
-// Amadeus API functions
+
+
+
+
+
+
+
+
+// Travel Advisor API functions
 const searchHotels = async (cityName, checkIn, checkOut, adults = 1, budgetLevel = 3) => {
-  console.log('🏨 Searching hotels with Amadeus API...');
+  console.log('🏨 Searching hotels with Travel Advisor API...');
   console.log('📍 Search parameters:', { cityName, checkIn, checkOut, adults, budgetLevel });
   
-  const maxRetries = 2;
-  let retryCount = 0;
+  // Validate city name
+  if (!cityName || cityName.trim() === '') {
+    console.error('❌ Invalid city name provided:', cityName);
+    return generateMockHotels('Unknown City', budgetLevel);
+  }
   
-  while (retryCount <= maxRetries) {
-    try {
-      // Get OAuth2 token first
-      const token = await getAmadeusToken();
-      if (!token) {
-        console.log('⚠️ Cannot search hotels - no Amadeus token');
-        return [];
-      }
-
-    // Try to get real city code from proxy server first
-    let cityCode = null;
+  try {
+    // Try to get coordinates for the city using Google Maps Geocoding
+    let latitude, longitude;
     
     try {
-      console.log('🌍 Attempting to get real city code from proxy server...');
-      const proxyUrl = `http://localhost:3001/api/cities?keyword=${encodeURIComponent(cityName)}`;
-      console.log('🌐 City search proxy URL:', proxyUrl);
+      const geocoder = new window.google.maps.Geocoder();
+      const result = await new Promise((resolve, reject) => {
+        // Make the search more specific by adding "city" to the query
+        const searchQuery = `${cityName.trim()}, city`;
+        geocoder.geocode({ address: searchQuery }, (results, status) => {
+          if (status === 'OK' && results.length > 0) {
+            resolve(results[0]);
+          } else {
+            console.log('⚠️ Geocoding failed, trying fallback coordinates...');
+            reject(new Error(`Geocoding failed with status: ${status}`));
+          }
+        });
+      });
+
+      const location = result.geometry.location;
+      latitude = location.lat();
+      longitude = location.lng();
       
-      const cityResponse = await fetch(proxyUrl);
+      // Validate that we got the right city by checking the formatted address
+      const formattedAddress = result.formatted_address.toLowerCase();
+      const searchCity = cityName.toLowerCase().trim();
       
-      if (cityResponse.ok) {
-        const cityData = await cityResponse.json();
-        console.log('✅ Real city data received from proxy');
-        
-        if (cityData.data && cityData.data.length > 0) {
-          const cityWithCode = cityData.data.find(city => city.address && city.address.cityCode);
-          if (cityWithCode) {
-            cityCode = cityWithCode.address.cityCode;
-            console.log('📍 Found real city code:', cityCode, 'for', cityName);
+      console.log('📍 City coordinates from geocoding:', latitude, longitude);
+      console.log('📍 Formatted address:', result.formatted_address);
+      
+      // Check if the geocoded result matches the searched city
+      if (!formattedAddress.includes(searchCity) && !searchCity.includes(formattedAddress.split(',')[0])) {
+        console.log('⚠️ Geocoding returned different city, checking fallback coordinates...');
+        throw new Error('Geocoding returned wrong city');
+      }
+    } catch (geocodingError) {
+      console.log('⚠️ Geocoding failed, using fallback coordinates for common cities...');
+      
+      // Fallback coordinates for common cities
+      const cityCoordinates = {
+        'bangkok': { lat: 13.7563, lng: 100.5018 },
+        'london': { lat: 51.5074, lng: -0.1278 },
+        'paris': { lat: 48.8566, lng: 2.3522 },
+        'new york': { lat: 40.7128, lng: -74.0060 },
+        'tokyo': { lat: 35.6762, lng: 139.6503 },
+        'singapore': { lat: 1.3521, lng: 103.8198 },
+        'dubai': { lat: 25.2048, lng: 55.2708 },
+        'sydney': { lat: -33.8688, lng: 151.2093 },
+        'mumbai': { lat: 19.0760, lng: 72.8777 },
+        'delhi': { lat: 28.7041, lng: 77.1025 },
+        'shanghai': { lat: 31.2304, lng: 121.4737 },
+        'beijing': { lat: 39.9042, lng: 116.4074 },
+        'seoul': { lat: 37.5665, lng: 126.9780 },
+        'osaka': { lat: 34.6937, lng: 135.5023 },
+        'kyoto': { lat: 35.0116, lng: 135.7681 },
+        'pattaya': { lat: 12.9236, lng: 100.8824 },
+        'phuket': { lat: 7.8804, lng: 98.3923 },
+        'chiang mai': { lat: 18.7883, lng: 98.9853 },
+        'krabi': { lat: 8.0863, lng: 98.9063 },
+        'koh samui': { lat: 9.5120, lng: 100.0136 },
+        'bali': { lat: -8.3405, lng: 115.0920 },
+        'jakarta': { lat: -6.2088, lng: 106.8456 },
+        'manila': { lat: 14.5995, lng: 120.9842 },
+        'ho chi minh city': { lat: 10.8231, lng: 106.6297 },
+        'hanoi': { lat: 21.0285, lng: 105.8542 },
+        'kuala lumpur': { lat: 3.1390, lng: 101.6869 },
+        'penang': { lat: 5.4164, lng: 100.3327 },
+        'hong kong': { lat: 22.3193, lng: 114.1694 },
+        'taipei': { lat: 25.0330, lng: 121.5654 },
+        'busan': { lat: 35.1796, lng: 129.0756 },
+        'fukuoka': { lat: 33.5902, lng: 130.4017 },
+        'nagoya': { lat: 35.1815, lng: 136.9066 },
+        'yokohama': { lat: 35.4437, lng: 139.6380 },
+        'sapporo': { lat: 43.0618, lng: 141.3545 },
+        'nara': { lat: 34.6851, lng: 135.8048 },
+        'kanazawa': { lat: 36.5613, lng: 136.6562 },
+        'takayama': { lat: 36.1461, lng: 137.2522 },
+        'hakone': { lat: 35.2324, lng: 139.1067 },
+        'nikko': { lat: 36.7500, lng: 139.6167 },
+        'kamakura': { lat: 35.3192, lng: 139.5467 },
+        'hiroshima': { lat: 34.3853, lng: 132.4553 },
+        'nagasaki': { lat: 32.7503, lng: 129.8777 },
+        'okinawa': { lat: 26.2124, lng: 127.6809 },
+        'kobe': { lat: 34.6901, lng: 135.1955 }
+      };
+      
+      const normalizedCityName = cityName.toLowerCase().trim();
+      
+      // Try exact match first
+      let coordinates = cityCoordinates[normalizedCityName];
+      
+      // If no exact match, try partial matches
+      if (!coordinates) {
+        for (const [city, coords] of Object.entries(cityCoordinates)) {
+          if (normalizedCityName.includes(city) || city.includes(normalizedCityName)) {
+            coordinates = coords;
+            console.log('📍 Found partial match:', city, 'for search:', normalizedCityName);
+            break;
           }
         }
       }
-    } catch (error) {
-      console.log('⚠️ Proxy server not available for city search:', error.message);
-    }
-    
-    // Fallback to hardcoded city codes
-    console.log('🔄 Using fallback city code system...');
-    
-    if (!cityCode) {
-      // Enhanced city code mapping with validated names
-      const commonCityCodes = {
-        // Major cities with validated names
-        'Bangkok': 'BKK',
-        'London': 'LON',
-        'Paris': 'PAR',
-        'New York': 'NYC',
-        'Tokyo': 'TYO',
-        'Rome': 'ROM',
-        'Madrid': 'MAD',
-        'Barcelona': 'BCN',
-        'Amsterdam': 'AMS',
-        'Berlin': 'BER',
-        'Singapore': 'SIN',
-        'Dubai': 'DXB',
-        'Sydney': 'SYD',
-        'Melbourne': 'MEL',
-        'Vancouver': 'YVR',
-        'Toronto': 'YYZ',
-        'Mumbai': 'BOM',
-        'Delhi': 'DEL',
-        'Shanghai': 'SHA',
-        'Beijing': 'PEK',
-        'Seoul': 'SEL',
-        'Osaka': 'OSA',
-        'Kyoto': 'KYO',
-        'Pattaya': 'PAT',
-        'Phuket': 'HKT',
-        'Chiang Mai': 'CNX',
-        'Krabi': 'KBV',
-        'Koh Samui': 'USM',
-        'Bali': 'DPS',
-        'Jakarta': 'CGK',
-        'Manila': 'MNL',
-        'Ho Chi Minh City': 'SGN',
-        'Hanoi': 'HAN',
-        'Kuala Lumpur': 'KUL',
-        'Penang': 'PEN',
-        'Georgetown': 'PEN',
-        'Hong Kong': 'HKG',
-        'Taipei': 'TPE',
-        'Busan': 'PUS',
-        'Fukuoka': 'FUK',
-        'Nagoya': 'NGO',
-        'Yokohama': 'YOK',
-        'Sapporo': 'CTS',
-        'Nara': 'NRT',
-        'Kanazawa': 'KMQ',
-        'Takayama': 'TAK',
-        'Hakone': 'HND',
-        'Nikko': 'NRT',
-        'Kamakura': 'NRT',
-        'Hiroshima': 'HIJ',
-        'Nagasaki': 'NGS',
-        'Okinawa': 'OKA',
-        'Kobe': 'UKB',
-        'Los Angeles': 'LAX',
-        'Chicago': 'ORD',
-        'Miami': 'MIA',
-        'San Francisco': 'SFO',
-        'Seattle': 'SEA',
-        'Denver': 'DEN',
-        'Atlanta': 'ATL',
-        'Dallas': 'DFW',
-        'Houston': 'IAH',
-        'Phoenix': 'PHX',
-        'Las Vegas': 'LAS',
-        'Orlando': 'MCO',
-        'Nashville': 'BNA',
-        'Austin': 'AUS',
-        'Portland': 'PDX',
-        'San Diego': 'SAN',
-        'Tampa': 'TPA',
-        'Minneapolis': 'MSP',
-        'Detroit': 'DTW',
-        'Cleveland': 'CLE',
-        'Pittsburgh': 'PIT',
-        'Cincinnati': 'CVG',
-        'Indianapolis': 'IND',
-        'Columbus': 'CMH',
-        'Milwaukee': 'MKE',
-        'Kansas City': 'MCI',
-        'St Louis': 'STL',
-        'Oklahoma City': 'OKC',
-        'Memphis': 'MEM',
-        'New Orleans': 'MSY',
-        'Baltimore': 'BWI',
-        'Charlotte': 'CLT',
-        'Raleigh': 'RDU',
-        'Richmond': 'RIC',
-        'Norfolk': 'ORF',
-        'Buffalo': 'BUF',
-        'Rochester': 'ROC',
-        'Syracuse': 'SYR',
-        'Albany': 'ALB',
-        'Providence': 'PVD',
-        'Hartford': 'BDL',
-        'Springfield': 'SGF',
-        'Des Moines': 'DSM',
-        'Omaha': 'OMA',
-        'Fargo': 'FAR',
-        'Billings': 'BIL',
-        'Boise': 'BOI',
-        'Spokane': 'GEG',
-        'Missoula': 'MSO',
-        'Anchorage': 'ANC',
-        'Honolulu': 'HNL'
-      };
       
-      // Use the validated city name directly
-      cityCode = commonCityCodes[cityName];
-      
-      if (cityCode) {
-        console.log('📍 Using validated city code:', cityCode, 'for', cityName);
+      if (coordinates) {
+        latitude = coordinates.lat;
+        longitude = coordinates.lng;
+        console.log('📍 Using fallback coordinates for', cityName, ':', latitude, longitude);
       } else {
-        console.log('❌ No validated city code found for:', cityName);
-        console.log('🔄 Trying to use first 3 letters as city code...');
-        cityCode = cityName.substring(0, 3).toUpperCase();
-        console.log('📍 Generated city code:', cityCode, 'for', cityName);
+        console.log('⚠️ No fallback coordinates found for', cityName, ', using mock hotels');
+        console.log('🔍 Available fallback cities:', Object.keys(cityCoordinates));
+        return generateMockHotels(cityName, budgetLevel);
       }
     }
 
-    // Try to get real data from proxy server first
-    try {
-      console.log('🏨 Attempting to get real hotel data from proxy server...');
-      const proxyUrl = `http://localhost:3001/api/hotels/by-city?cityCode=${cityCode}&checkIn=${checkIn}&checkOut=${checkOut}&adults=${adults}&budgetLevel=${budgetLevel}`;
-      console.log('🌐 Proxy URL:', proxyUrl);
+    // Search hotels using Travel Advisor API with budget filtering
+    const hotels = await searchHotelsByGeocode(latitude, longitude, budgetLevel);
+    
+    if (hotels.length > 0) {
+      console.log('✅ Travel Advisor API successful, returning', hotels.length, 'hotels');
       
-      const hotelResponse = await fetch(proxyUrl);
+      // Transform Travel Advisor data to match expected format
+      const transformedHotels = hotels.map(hotel => ({
+        name: hotel.name || 'Unknown Hotel',
+        hotelId: hotel.location_id || hotel.hotel_id || hotel.id || Math.random().toString(36).substr(2, 9),
+        rating: hotel.rating || 'N/A',
+        hotelClass: hotel.hotel_class || 'N/A',
+        numReviews: hotel.num_reviews || 'N/A',
+        address: {
+          cityName: hotel.location_string?.split(',')[0] || cityName,
+          countryCode: 'Unknown',
+          latitude: hotel.latitude,
+          longitude: hotel.longitude
+        },
+        offers: [], // Travel Advisor doesn't provide pricing in this endpoint
+        amenities: hotel.amenities || hotel.facilities || [],
+        description: hotel.description || hotel.overview || '',
+        photo: hotel.photo?.images?.original?.url || null,
+        webUrl: hotel.web_url || null
+      }));
       
-      if (hotelResponse.ok) {
-        const hotelData = await hotelResponse.json();
-        console.log('✅ Real hotel data received from proxy');
-        
-        if (hotelData.data && hotelData.data.length > 0) {
-          console.log('🏨 Raw hotel data structure:', JSON.stringify(hotelData.data[0], null, 2));
-          
-          // Process real hotel data with defensive parsing
-          let hotels = hotelData.data.map(hotel => {
-            // Handle different possible data structures
-            const hotelInfo = hotel.hotel || hotel;
-            const hotelName = hotelInfo.name || hotelInfo.hotelName || 'Unknown Hotel';
-            const hotelRating = hotelInfo.rating || hotelInfo.stars || 'N/A';
-            const hotelAddress = hotelInfo.address || {};
-            const hotelAmenities = hotelInfo.amenities || [];
-            
-            // Handle offers structure
-            const offers = hotel.offers || hotel.offersList || [];
-            const processedOffers = offers.map(offer => ({
-              id: offer.id || `offer-${Math.random()}`,
-              roomType: offer.room?.type || offer.roomType || 'Standard Room',
-              boardType: offer.boardType || 'Room Only',
-              price: offer.price || { currency: 'USD', total: '150' },
-              cancellationPolicy: offer.policies?.cancellation || 'Standard'
-            }));
-            
-            return {
-              name: hotelName,
-              rating: hotelRating,
-              address: hotelAddress,
-              amenities: hotelAmenities,
-              offers: processedOffers
-            };
-          });
-
-          // Filter by budget
-          const budgetRanges = {
-            1: { min: 0, max: 100, label: 'Budget ($)' },
-            2: { min: 100, max: 200, label: 'Economy ($$)' },
-            3: { min: 200, max: 400, label: 'Mid-range ($$$)' },
-            4: { min: 400, max: 800, label: 'Luxury ($$$$)' },
-            5: { min: 800, max: 9999, label: 'Ultra-luxury ($$$$$)' }
-          };
-
-          const budgetRange = budgetRanges[budgetLevel];
-          hotels = hotels.filter(hotel => {
-            if (!hotel.offers || hotel.offers.length === 0) {
-              return false; // Skip hotels with no offers
-            }
-            
-            const avgPrice = hotel.offers.reduce((sum, offer) => {
-              const price = parseFloat(offer.price?.total || offer.price?.amount || 0);
-              return sum + price;
-            }, 0) / hotel.offers.length;
-            
-            return avgPrice >= budgetRange.min && avgPrice <= budgetRange.max;
-          });
-
-          console.log(`✅ Found ${hotels.length} real hotels in ${budgetRange.label} range`);
-          return hotels;
-        }
-      }
-    } catch (error) {
-      console.log('⚠️ Proxy server not available, using mock data:', error.message);
+      return transformedHotels;
+    } else {
+      console.log('⚠️ No hotels found from Travel Advisor API, using fallback');
+      return generateMockHotels(cityName, budgetLevel);
     }
-    
-    // Fallback to mock data
-    console.log('🏨 Using mock hotel data as fallback');
-    console.log('🏨 City code:', cityCode, 'for', cityName);
-    
-    const mockHotels = generateMockHotels(cityName, budgetLevel);
-    console.log('🏨 Generated', mockHotels.length, 'mock hotels');
-    
-    return mockHotels;
-
   } catch (error) {
-    console.error('❌ Error searching hotels:', error);
-    
-    // If it's a token expired error, retry
-    if (error.message.includes('Token expired') && retryCount < maxRetries) {
-      retryCount++;
-      console.log(`🔄 Retrying hotel search (attempt ${retryCount}/${maxRetries})...`);
-      continue;
-    }
-    
-    return [];
-  }
-  } // Close the while loop
-};
-
-const searchFlights = async (origin, destination, departureDate, returnDate = null, adults = 1) => {
-  console.log('✈️ Searching flights with Amadeus API...');
-  
-  try {
-    // Get OAuth2 token first
-    const token = await getAmadeusToken();
-    if (!token) {
-      console.log('⚠️ Cannot search flights - no Amadeus token');
-      return [];
-    }
-
-    const flightResponse = await fetch(
-      `https://test.api.amadeus.com/v2/shopping/flight-offers?originLocationCode=${origin}&destinationLocationCode=${destination}&departureDate=${departureDate}${returnDate ? `&returnDate=${returnDate}` : ''}&adults=${adults}&max=20`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      }
-    );
-
-    if (!flightResponse.ok) {
-      throw new Error(`Flight search failed: ${flightResponse.status}`);
-    }
-
-    const flightData = await flightResponse.json();
-    
-    if (!flightData.data || flightData.data.length === 0) {
-      throw new Error('No flights found for the specified criteria');
-    }
-
-    // Process flight data according to Amadeus API structure
-    const flights = flightData.data.map(flight => ({
-      id: flight.id,
-      price: flight.price,
-      itineraries: flight.itineraries,
-      numberOfBookableSeats: flight.numberOfBookableSeats,
-      pricingOptions: flight.pricingOptions
-    }));
-
-    console.log('✅ Found', flights.length, 'flights');
-    return flights;
-
-  } catch (error) {
-    console.error('❌ Error searching flights:', error);
-    return [];
+    console.error('❌ Error searching hotels with Travel Advisor API:', error);
+    console.log('🔄 Falling back to mock hotels');
+    return generateMockHotels(cityName, budgetLevel);
   }
 };
+
+
 
 // Travel insights function removed - not currently used
 
@@ -1067,38 +1056,137 @@ const testAPIs = async () => {
     console.error('❌ Open-Meteo API Test FAILED:', error);
   }
   
-  // Test Amadeus Hotel Search API
-  console.log('🏨 Testing Amadeus Hotel Search API...');
+  // Test Travel Advisor Hotel Search API
+  console.log('🏨 Testing Travel Advisor Hotel Search API...');
   try {
-    const hotelTest = await searchHotels('Paris', '2024-12-01', '2024-12-03', 2, 3); // Mid-range budget
+    const hotelTest = await searchHotels('Bangkok', '2024-12-01', '2024-12-03', 2, 3); // Mid-range budget
     if (hotelTest && hotelTest.length > 0) {
-      console.log('✅ Amadeus Hotel API Test PASSED');
+      console.log('✅ Travel Advisor Hotel API Test PASSED');
       console.log('Found hotels:', hotelTest.length);
       console.log('First hotel:', hotelTest[0]);
     } else {
-      console.log('❌ Amadeus Hotel API Test FAILED - No hotels found or authentication failed');
+      console.log('❌ Travel Advisor Hotel API Test FAILED - No hotels found');
     }
   } catch (error) {
-    console.error('❌ Amadeus Hotel API Test FAILED:', error);
+    console.error('❌ Travel Advisor Hotel API Test FAILED:', error);
   }
   
-  // Test Amadeus Flight Search API
-  console.log('✈️ Testing Amadeus Flight Search API...');
+  // Test Travel Advisor API directly with different budget levels
+  console.log('🏨 Testing Travel Advisor API with budget filtering...');
   try {
-    const flightTest = await searchFlights('PAR', 'LON', '2024-12-01', null, 1);
-    if (flightTest && flightTest.length > 0) {
-      console.log('✅ Amadeus Flight API Test PASSED');
-      console.log('Found flights:', flightTest.length);
-      console.log('First flight:', flightTest[0]);
-    } else {
-      console.log('❌ Amadeus Flight API Test FAILED - No flights found or authentication failed');
+    // Test different budget levels
+    for (let budgetLevel = 1; budgetLevel <= 5; budgetLevel++) {
+      console.log(`\n💰 Testing budget level ${budgetLevel}:`);
+      const directTest = await searchHotelsByGeocode(13.7563, 100.5018, budgetLevel); // Bangkok coordinates
+      if (directTest && directTest.length > 0) {
+        console.log(`✅ Budget level ${budgetLevel} test PASSED`);
+        console.log(`Found ${directTest.length} hotels for budget level ${budgetLevel}`);
+        console.log('Sample hotel:', directTest[0]);
+      } else {
+        console.log(`⚠️ Budget level ${budgetLevel} test - No hotels found`);
+      }
     }
   } catch (error) {
-    console.error('❌ Amadeus Flight API Test FAILED:', error);
+    console.error('❌ Travel Advisor Direct API Test FAILED:', error);
   }
   
   console.log('🧪 API testing complete!');
 };
+
+// Dedicated Hotel API Testing Function
+const testHotelAPI = async (latitude = 42.3555076, longitude = -71.0565364, budgetLevel = 3) => {
+  console.log('🏨 Testing Travel Advisor Hotel API directly...');
+  console.log('📍 Testing coordinates:', latitude, longitude);
+  console.log('💰 Budget level:', budgetLevel);
+  
+  try {
+    // Make direct GET request to Travel Advisor API
+    const url = `https://travel-advisor.p.rapidapi.com/hotels/list-by-latlng?latitude=${latitude}&longitude=${longitude}&lang=en_US&currency=USD`;
+    
+    console.log('🌐 Making request to:', url);
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'X-RapidAPI-Key': 'dd41c3b481msh51c9e846214042ap1395aejsn98d3615f27bb',
+        'X-RapidAPI-Host': 'travel-advisor.p.rapidapi.com'
+      }
+    });
+
+    console.log('📡 Response status:', response.status, response.statusText);
+
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ API response received');
+    console.log('📦 Response structure:', Object.keys(data));
+    console.log('📦 Data array length:', data.data ? data.data.length : 'No data array');
+    
+    if (data.data && Array.isArray(data.data) && data.data.length > 0) {
+      // Return all hotels without budget filtering
+      const finalHotels = data.data;
+      
+      console.log('✅ Hotel API Test PASSED');
+      console.log(`🏨 Found ${data.data.length} total hotels (no budget filtering)`);
+      
+      // Log first 3 final hotels for inspection
+      finalHotels.slice(0, 3).forEach((hotel, index) => {
+        console.log(`🏨 Hotel ${index + 1}:`);
+        console.log(`   Name: ${hotel.name || 'N/A'}`);
+        console.log(`   Rating: ${hotel.rating || 'N/A'}`);
+        console.log(`   Hotel Class: ${hotel.hotel_class || 'N/A'}`);
+        console.log(`   Reviews: ${hotel.num_reviews || 'N/A'}`);
+        console.log(`   Location: ${hotel.location_string || 'N/A'}`);
+        console.log(`   Coordinates: ${hotel.latitude}, ${hotel.longitude}`);
+        
+        if (hotel.photo && hotel.photo.images && hotel.photo.images.original) {
+          console.log(`   Photo: ${hotel.photo.images.original.url}`);
+        } else {
+          console.log(`   Photo: Not available`);
+        }
+        console.log('---');
+      });
+      
+      return finalHotels;
+    } else {
+      console.log('❌ Hotel API Test FAILED - No hotels found');
+      console.log('📦 Full response:', JSON.stringify(data, null, 2));
+      return [];
+    }
+  } catch (error) {
+    console.error('❌ Hotel API Test FAILED:', error);
+    return [];
+  }
+};
+
+// Test different cities with their coordinates
+const testMultipleCities = async () => {
+  console.log('🌍 Testing multiple cities...');
+  
+  const testCities = [
+    { name: 'Boston', lat: 42.3555076, lng: -71.0565364 },
+    { name: 'Bangkok', lat: 13.7563, lng: 100.5018 },
+    { name: 'Paris', lat: 48.8566, lng: 2.3522 },
+    { name: 'Tokyo', lat: 35.6762, lng: 139.6503 },
+    { name: 'New York', lat: 40.7128, lng: -74.0060 }
+  ];
+  
+  for (const city of testCities) {
+    console.log(`\n🏨 Testing ${city.name}...`);
+    const hotels = await testHotelAPI(city.lat, city.lng);
+    console.log(`${city.name}: ${hotels.length} hotels found`);
+  }
+  
+  console.log('\n🌍 Multiple cities test complete!');
+};
+
+
+
+
+
+
 
 // Search for attractions using Google Maps Places API
 const searchAttractionsWithGoogleMaps = async (cityName, service) => {
@@ -1298,6 +1386,106 @@ const getMockData = (city, type) => {
   }
 };
 
+// Add hotel markers to map
+const addHotelMarkersToMap = (hotels, mapInstance, existingMarkers, setMarkers) => {
+  if (!mapInstance || !hotels || hotels.length === 0) return;
+  
+  console.log('📍 Adding hotel markers to map:', hotels.length, 'hotels');
+  
+  // Clear existing markers
+  existingMarkers.forEach(marker => marker.setMap(null));
+  
+  const newMarkers = [];
+  
+  hotels.forEach((hotel, index) => {
+    if (hotel.address && hotel.address.latitude && hotel.address.longitude) {
+      const position = {
+        lat: parseFloat(hotel.address.latitude),
+        lng: parseFloat(hotel.address.longitude)
+      };
+      
+      const marker = new window.google.maps.Marker({
+        position: position,
+        map: mapInstance,
+        title: hotel.name,
+        icon: {
+          url: 'https://maps.google.com/mapfiles/ms/icons/hotel.png',
+          scaledSize: new window.google.maps.Size(32, 32)
+        }
+      });
+      
+      // Add info window
+      const infoWindow = new window.google.maps.InfoWindow({
+        content: `
+          <div style="padding: 10px; max-width: 250px;">
+            <h3 style="margin: 0 0 5px 0; color: #333;">${hotel.name}</h3>
+            <p style="margin: 0 0 5px 0; color: #666;">⭐ ${hotel.rating}</p>
+            ${hotel.offers && hotel.offers.length > 0 ? 
+              `<p style="margin: 0; color: #28a745; font-weight: bold;">
+                From ${hotel.offers[0].price?.currency} ${hotel.offers[0].price?.total}
+              </p>` : ''
+            }
+          </div>
+        `
+      });
+      
+      marker.addListener('click', () => {
+        infoWindow.open(mapInstance, marker);
+      });
+      
+      newMarkers.push(marker);
+    }
+  });
+  
+  setMarkers(newMarkers);
+  console.log('✅ Added', newMarkers.length, 'hotel markers to map');
+};
+
+// Make testing functions available globally for easy console access
+window.testHotelAPI = testHotelAPI;
+window.testMultipleCities = testMultipleCities;
+window.testAPIs = testAPIs;
+
+console.log('🧪 Testing functions available in console:');
+console.log('  - testHotelAPI(lat, lng, budgetLevel) - Test specific coordinates with budget filtering');
+console.log('  - testMultipleCities() - Test multiple cities');
+console.log('  - testAPIs() - Test all APIs');
+console.log('  - testGeocoding(city) - Test geocoding for a specific city');
+
+// Test geocoding function
+window.testGeocoding = async (cityName) => {
+  console.log('🧪 Testing geocoding for:', cityName);
+  
+  try {
+    const geocoder = new window.google.maps.Geocoder();
+    const result = await new Promise((resolve, reject) => {
+      const searchQuery = `${cityName.trim()}, city`;
+      geocoder.geocode({ address: searchQuery }, (results, status) => {
+        if (status === 'OK' && results.length > 0) {
+          resolve(results[0]);
+        } else {
+          reject(new Error(`Geocoding failed with status: ${status}`));
+        }
+      });
+    });
+
+    const location = result.geometry.location;
+    console.log('✅ Geocoding successful');
+    console.log('📍 Coordinates:', location.lat(), location.lng());
+    console.log('📍 Formatted address:', result.formatted_address);
+    console.log('📍 Place ID:', result.place_id);
+    
+    return {
+      lat: location.lat(),
+      lng: location.lng(),
+      address: result.formatted_address
+    };
+  } catch (error) {
+    console.error('❌ Geocoding failed:', error);
+    return null;
+  }
+};
+
 function HomePage() {
   const [destination, setDestination] = useState('');
   const [map, setMap] = useState(null);
@@ -1328,9 +1516,11 @@ function HomePage() {
   // Hotel search state
   const [hotels, setHotels] = useState([]);
   const [isSearchingHotels, setIsSearchingHotels] = useState(false);
+  const [hotelMarkers, setHotelMarkers] = useState([]);
   
   // Chatbot state
   const [isChatbotOpen, setIsChatbotOpen] = useState(false);
+  const [showChatNotification, setShowChatNotification] = useState(false);
   
   // Trip data for Kumo
   const [currentTripData, setCurrentTripData] = useState(null);
@@ -1338,6 +1528,9 @@ function HomePage() {
   // Plan adjustment state
   const [planAdjustment, setPlanAdjustment] = useState('');
   const [isAdjustingPlan, setIsAdjustingPlan] = useState(false);
+  
+  // Extra Info collapsible panels state
+
   
   // Load trip data from localStorage on component mount
   useEffect(() => {
@@ -1488,12 +1681,93 @@ function HomePage() {
     }
   };
 
+
+
+  // Hotel API Test Module state
+  const [testCity, setTestCity] = useState('Bangkok');
+  const [testHotels, setTestHotels] = useState([]);
+  const [testLoading, setTestLoading] = useState(false);
+  const [testError, setTestError] = useState('');
+  const [testApiSuccess, setTestApiSuccess] = useState(false);
+
+  // 5 city options with lat/lng
+  const testCities = [
+    { name: 'Bangkok', lat: 13.7563, lng: 100.5018 },
+    { name: 'Paris', lat: 48.8566, lng: 2.3522 },
+    { name: 'Tokyo', lat: 35.6762, lng: 139.6503 },
+    { name: 'New York', lat: 40.7128, lng: -74.0060 },
+    { name: 'London', lat: 51.5074, lng: -0.1278 }
+  ];
+
+  // Hotel API test handler
+  const handleTestHotelAPI = async () => {
+    setTestLoading(true);
+    setTestError('');
+    setTestHotels([]);
+    const city = testCities.find(c => c.name === testCity);
+    if (!city) {
+      setTestError('Invalid city selection');
+      setTestLoading(false);
+      return;
+    }
+    try {
+      const url = `https://travel-advisor.p.rapidapi.com/hotels/list-by-latlng?latitude=${city.lat}&longitude=${city.lng}&lang=en_US&currency=USD&distance=10&limit=30`;
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'X-RapidAPI-Key': 'dd41c3b481msh51c9e846214042ap1395aejsn98d3615f27bb',
+          'X-RapidAPI-Host': 'travel-advisor.p.rapidapi.com'
+        }
+      });
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status} ${response.statusText}`);
+      }
+      const data = await response.json();
+      let hotels = [];
+      if (data.data && Array.isArray(data.data)) hotels = data.data;
+      else if (data.results && Array.isArray(data.results)) hotels = data.results;
+      else if (data.hotels && Array.isArray(data.hotels)) hotels = data.hotels;
+      else if (Array.isArray(data)) hotels = data;
+      setTestHotels(hotels);
+      // Show API response success message
+      setTestApiSuccess(true);
+      setTimeout(() => setTestApiSuccess(false), 3000); // Hide after 3 seconds
+    } catch (err) {
+      setTestError('Failed to fetch hotels: ' + err.message);
+    }
+    setTestLoading(false);
+  };
+
   return (
     <div className="App">
       <div className="hero-section">
-        <h1>WanderWise</h1>
-        <p className="tagline">We plan your trip</p>
-        <p className="subtitle">AI-powered travel planning with custom insights</p>
+        <TextType 
+          text="WanderWise"
+          as="h1"
+          typingSpeed={100}
+          initialDelay={500}
+          showCursor={true}
+          cursorCharacter="|"
+          className="hero-title"
+        />
+        <TextType 
+          text="We plan your trip"
+          as="p"
+          className="tagline"
+          typingSpeed={80}
+          initialDelay={2000}
+          showCursor={true}
+          cursorCharacter="|"
+        />
+        <TextType 
+          text="AI-powered travel planning powered by kumo"
+          as="p"
+          className="subtitle"
+          typingSpeed={60}
+          initialDelay={3500}
+          showCursor={true}
+          cursorCharacter="|"
+        />
         
         {/* Test API Button */}
         <button 
@@ -1506,7 +1780,7 @@ function HomePage() {
             padding: '10px 20px',
             borderRadius: '25px',
             cursor: 'pointer',
-            marginBottom: '20px',
+            marginBottom: '10px',
             fontSize: '14px',
             fontWeight: '600',
             marginTop: '15px'
@@ -1514,6 +1788,8 @@ function HomePage() {
         >
           🧪 Test APIs
         </button>
+        
+
       </div>
 
       <div className="search-container">
@@ -1628,7 +1904,7 @@ function HomePage() {
                 </div>
 
                 {/* Interests Selection */}
-                <div className="planning-card">
+                <div className="planning-card interests-card">
                   <h3>🎯 What interests you most?</h3>
                   <p className="interests-subtitle">Select all that apply</p>
                   <div className="interests-grid">
@@ -1662,8 +1938,7 @@ function HomePage() {
                 </div>
 
                 {/* Generate Plan Button */}
-                <div className="planning-card">
-                  <h3>🚀 Ready to plan?</h3>
+                <div className="planning-card ready-to-plan-card">
                   <button 
                     className="generate-plan-btn"
                     onClick={async () => {
@@ -1694,15 +1969,51 @@ function HomePage() {
                           console.error('Failed to save trip data to localStorage:', error);
                         }
                         
-                        // Automatically open Kumo with trip data
-                        setIsChatbotOpen(true);
+                        // Show chat button notification instead of auto-opening
+                        setShowChatNotification(true);
+                        
+                        // Generate extra info for the city
+                
                         
                         // Search for hotels after plan generation
                         console.log('🏨 Searching for hotels...');
                         
-                        // Set default dates if empty
-                        const startDate = planningData.startDate || '2024-12-01';
-                        const endDate = planningData.endDate || '2024-12-03';
+                        // Set default dates if empty - use current date or handle future dates
+                        const today = new Date();
+                        const currentDate = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+                        
+                        let startDate = planningData.startDate;
+                        let endDate = planningData.endDate;
+                        
+                        // If no dates provided, use current date + 1 day
+                        if (!startDate) {
+                          const tomorrow = new Date(today);
+                          tomorrow.setDate(tomorrow.getDate() + 1);
+                          startDate = tomorrow.toISOString().split('T')[0];
+                        }
+                        
+                        if (!endDate) {
+                          const dayAfterTomorrow = new Date(today);
+                          dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 2);
+                          endDate = dayAfterTomorrow.toISOString().split('T')[0];
+                        }
+                        
+                        // Check if dates are too far in the future (more than 1 year)
+                        const startDateObj = new Date(startDate);
+                        const endDateObj = new Date(endDate);
+                        const oneYearFromNow = new Date(today);
+                        oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
+                        
+                        if (startDateObj > oneYearFromNow || endDateObj > oneYearFromNow) {
+                          console.log('⚠️ Dates too far in future, using current date for pricing estimates');
+                          const tomorrow = new Date(today);
+                          tomorrow.setDate(tomorrow.getDate() + 1);
+                          startDate = tomorrow.toISOString().split('T')[0];
+                          
+                          const dayAfterTomorrow = new Date(today);
+                          dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 2);
+                          endDate = dayAfterTomorrow.toISOString().split('T')[0];
+                        }
                         
                         console.log('📅 Date format check:', {
                           startDate: startDate,
@@ -1710,62 +2021,54 @@ function HomePage() {
                           format: 'YYYY-MM-DD'
                         });
                         
-                        // Only search for hotels if we have valid dates
+                        // Only search for hotels if we have valid dates and a selected city
                         let hotelResults = [];
-                        if (startDate && endDate) {
+                        const cityToSearch = selectedCity || destination;
+                        
+                        if (startDate && endDate && cityToSearch) {
+                          console.log('🏨 Searching hotels for:', cityToSearch, 'with dates:', startDate, 'to', endDate);
                           setIsSearchingHotels(true);
-                          hotelResults = await searchHotels(selectedCity, startDate, endDate, planningData.partySize, planningData.budget);
+                          hotelResults = await searchHotels(cityToSearch, startDate, endDate, planningData.partySize, planningData.budget);
                           setHotels(hotelResults);
                         } else {
-                          console.log('⚠️ Skipping hotel search - no valid dates provided');
-                          setHotels([]);
+                          console.log('⚠️ Skipping hotel search - missing data:', {
+                            startDate: startDate,
+                            endDate: endDate,
+                            cityToSearch: cityToSearch
+                          });
                         }
                         
-                        // Hotel markers functionality removed for now
-                        // if (hotelResults.length > 0 && map) {
-                        //   addHotelMarkersToMap(hotelResults, map, hotelMarkers, setHotelMarkers);
-                        // }
-                        
-                        setIsSearchingHotels(false);
+                        setPlanLoading(false);
                       } catch (error) {
-                        console.error('Error generating custom plan:', error);
-                      } finally {
+                        console.error('❌ Error generating custom plan:', error);
                         setPlanLoading(false);
                       }
                     }}
                     disabled={planLoading}
                   >
-                    {planLoading ? 'Generating Plan...' : 'Generate My Custom Plan'}
-                  </button>
-                  
-                  <button 
-                    className="back-to-search-btn"
-                    onClick={() => {
-                      setShowPlanningForm(false);
-                      setSelectedCity('');
-                      setDestination('');
-                      setWeather(null);
-                      setSummary('');
-                      setAttractions([]);
-                      setCustomPlan(null);
-                      setHotels([]);
-                      setPlanLoading(false);
-                      setIsSearchingHotels(false);
-                      setCurrentTripData(null);
-                      localStorage.removeItem('kumoTripData');
-                      setPlanningData({
-                        startDate: '',
-                        endDate: '',
-                        partySize: 1,
-                        travelerType: 'single',
-                        budget: 3,
-                        interests: []
-                      });
-                      setCurrentTripData(null);
-                      localStorage.removeItem('kumoTripData');
-                    }}
-                  >
-                    ← Back to Search
+                    <div className="plan-btn-content">
+                      {!planLoading ? (
+                        <>
+                          <img src="/kumo.png" alt="Kumo" className="plan-btn-kumo" />
+                          <div className="plan-btn-text">
+                            <span className="plan-btn-title">Send Kumo to work</span>
+                            <span className="plan-btn-subtitle">Generate your custom travel plan</span>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="kumo-loading">
+                          <div className="loading-container">
+                            <div className="progress-bar">
+                              <div className="progress-fill"></div>
+                              <div className="kumo-progress">
+                                <img src="/kumoloading.png" alt="Kumo" className="kumo-progress-img" />
+                              </div>
+                            </div>
+                            <p className="loading-text">🐾 Kumo is crafting your perfect plan...</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </button>
                 </div>
               </div>
@@ -1776,37 +2079,36 @@ function HomePage() {
         {/* Custom Plan Page */}
         {showCustomPlan && customPlan && (
           <div className="custom-plan-section">
-            <h2>🎯 Your Personalized Travel Plan</h2>
+            <h2>
+              <img src="/kumoloading.png" alt="Kumo" style={{width: '180px', height: '120px', marginRight: '20px', verticalAlign: 'middle'}} />
+              Kumo says....
+            </h2>
             
-            {planLoading && (
-              <div className="kumo-loading">
-                <div className="loading-container">
-                  <div className="progress-bar">
-                    <div className="progress-fill"></div>
-                    <div className="kumo-progress">
-                      <img src="/Kumo.png" alt="Kumo" className="kumo-progress-img" />
-                    </div>
-                  </div>
-                  <p className="loading-text">🐾 Kumo is crafting your perfect travel plan...</p>
-                </div>
-              </div>
-            )}
+
             
             <div className="plan-summary">
               <h3>📋 Trip Overview</h3>
-              <p>{customPlan.summary}</p>
-              {customPlan.seasonal_notes && (
-                <div className="seasonal-notes">
-                  <h4>📅 Seasonal Notes</h4>
-                  <p>{customPlan.seasonal_notes}</p>
+              <div className="overview-content">
+                <div className="overview-main">
+                  <p className="trip-summary">{customPlan.summary}</p>
                 </div>
-              )}
-              {customPlan.weather_adaptations && (
-                <div className="weather-adaptations">
-                  <h4>🌤️ Weather Adaptations</h4>
-                  <p>{customPlan.weather_adaptations}</p>
+                
+                <div className="overview-details">
+                  {customPlan.seasonal_notes && (
+                    <div className="seasonal-notes">
+                      <h4>📅 Seasonal Context</h4>
+                      <p>{customPlan.seasonal_notes}</p>
+                    </div>
+                  )}
+                  
+                  {customPlan.weather_adaptations && (
+                    <div className="weather-adaptations">
+                      <h4>🌤️ Weather Preparation</h4>
+                      <p>{customPlan.weather_adaptations}</p>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
             
             <div className="plan-grid">
@@ -1861,41 +2163,86 @@ function HomePage() {
                   <div className="hotel-list">
                     {hotels.slice(0, 5).map((hotel, index) => (
                       <div key={index} className="hotel-card">
-                        <div className="hotel-header">
-                          <h4>{hotel.name}</h4>
-                          {hotel.rating !== 'N/A' && (
-                            <span className="hotel-rating">⭐ {hotel.rating}</span>
-                          )}
-                        </div>
-                        {hotel.address && (
-                          <p className="hotel-address">📍 {hotel.address.cityName}, {hotel.address.countryCode}</p>
-                        )}
-                        {hotel.offers && hotel.offers.length > 0 && (
-                          <div className="hotel-offers">
-                            <p><strong>Available Rooms:</strong></p>
-                            {hotel.offers.slice(0, 3).map((offer, offerIndex) => (
-                              <div key={offerIndex} className="hotel-offer">
-                                <span className="room-type">{offer.roomType}</span>
-                                <span className="price">{offer.price.currency} {offer.price.total}</span>
-                              </div>
-                            ))}
+                        {/* Hotel Image */}
+                        {hotel.photo && (
+                          <div className="hotel-image-container">
+                            <img 
+                              src={hotel.photo} 
+                              alt={hotel.name}
+                              className="hotel-image"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                                e.target.nextSibling.style.display = 'block';
+                              }}
+                            />
+                            <div className="hotel-image-placeholder" style={{display: 'none'}}>
+                              🏨
+                            </div>
                           </div>
                         )}
-                        <div className="hotel-map-link">
-                          <button 
-                            className="view-on-map-btn"
-                            onClick={() => {
-                              if (hotel.address && hotel.address.latitude && hotel.address.longitude) {
-                                map.setCenter({ 
-                                  lat: parseFloat(hotel.address.latitude), 
-                                  lng: parseFloat(hotel.address.longitude) 
-                                });
-                                map.setZoom(15);
-                              }
-                            }}
-                          >
-                            🗺️ View on Map
-                          </button>
+                        
+                        <div className="hotel-content">
+                          <div className="hotel-header">
+                            <h4>{hotel.name}</h4>
+                            {hotel.rating !== 'N/A' && (
+                              <span className="hotel-rating">⭐ {hotel.rating}</span>
+                            )}
+                          </div>
+                          
+                          {hotel.hotelClass && hotel.hotelClass !== 'N/A' && (
+                            <p className="hotel-class">🏆 {hotel.hotelClass}-star hotel</p>
+                          )}
+                          
+                          {hotel.numReviews && hotel.numReviews !== 'N/A' && (
+                            <p className="hotel-reviews">📝 {hotel.numReviews} reviews</p>
+                          )}
+                          
+                          {hotel.address && (
+                            <p className="hotel-address">📍 {hotel.address.cityName}, {hotel.address.countryCode}</p>
+                          )}
+                          
+                          {hotel.offers && hotel.offers.length > 0 && (
+                            <div className="hotel-offers">
+                              <p><strong>Available Rooms:</strong></p>
+                              {hotel.offers.slice(0, 3).map((offer, offerIndex) => (
+                                <div key={offerIndex} className="hotel-offer">
+                                  <span className="room-type">{offer.roomType}</span>
+                                  <span className="price">{offer.price.currency} {offer.price.total}</span>
+                                </div>
+                              ))}
+                              {hotel.dateNote && (
+                                <p className="date-note">📅 {hotel.dateNote}</p>
+                              )}
+                            </div>
+                          )}
+                          
+                          <div className="hotel-actions">
+                            <button 
+                              className="view-on-map-btn"
+                              onClick={() => {
+                                if (hotel.address && hotel.address.latitude && hotel.address.longitude) {
+                                  map.setCenter({ 
+                                    lat: parseFloat(hotel.address.latitude), 
+                                    lng: parseFloat(hotel.address.longitude) 
+                                  });
+                                  map.setZoom(15);
+                                }
+                              }}
+                            >
+                              🗺️ View on Map
+                            </button>
+                            
+                            {hotel.webUrl && (
+                              <a 
+                                href={hotel.webUrl} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="view-details-btn"
+                              >
+                                🔗 View Details
+                              </a>
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1957,14 +2304,16 @@ function HomePage() {
                       )}
                       
                       {/* Meals */}
-                      <div className="meals">
-                        <h5>🍽️ Meals</h5>
-                        <div className="meal-times">
-                          <span><strong>Breakfast:</strong> {day.meals.breakfast}</span>
-                          <span><strong>Lunch:</strong> {day.meals.lunch}</span>
-                          <span><strong>Dinner:</strong> {day.meals.dinner}</span>
+                      {day.meals && (
+                        <div className="meals">
+                          <h5>🍽️ Meals</h5>
+                          <div className="meal-times">
+                            <span><strong>Breakfast:</strong> {day.meals.breakfast || 'Not specified'}</span>
+                            <span><strong>Lunch:</strong> {day.meals.lunch || 'Not specified'}</span>
+                            <span><strong>Dinner:</strong> {day.meals.dinner || 'Not specified'}</span>
+                          </div>
                         </div>
-                      </div>
+                      )}
                       
                       {/* Flow Tips */}
                       {day.flow_tips && (
@@ -2002,31 +2351,33 @@ function HomePage() {
               )}
               
               {/* Budget Card */}
-              <div className="plan-card budget-card">
-                <h3>💰 Budget Breakdown</h3>
-                <div className="budget-items">
-                  <div className="budget-item">
-                    <span>Accommodation:</span>
-                    <span>{customPlan.budget_breakdown.accommodation}</span>
-                  </div>
-                  <div className="budget-item">
-                    <span>Food:</span>
-                    <span>{customPlan.budget_breakdown.food}</span>
-                  </div>
-                  <div className="budget-item">
-                    <span>Activities:</span>
-                    <span>{customPlan.budget_breakdown.activities}</span>
-                  </div>
-                  <div className="budget-item">
-                    <span>Transport:</span>
-                    <span>{customPlan.budget_breakdown.transport}</span>
-                  </div>
-                  <div className="budget-item total">
-                    <span>Total:</span>
-                    <span>{customPlan.budget_breakdown.total}</span>
+              {customPlan.budget_breakdown && (
+                <div className="plan-card budget-card">
+                  <h3>💰 Budget Breakdown</h3>
+                  <div className="budget-items">
+                    <div className="budget-item">
+                      <span>Accommodation:</span>
+                      <span>{customPlan.budget_breakdown.accommodation || 'Not specified'}</span>
+                    </div>
+                    <div className="budget-item">
+                      <span>Food:</span>
+                      <span>{customPlan.budget_breakdown.food || 'Not specified'}</span>
+                    </div>
+                    <div className="budget-item">
+                      <span>Activities:</span>
+                      <span>{customPlan.budget_breakdown.activities || 'Not specified'}</span>
+                    </div>
+                    <div className="budget-item">
+                      <span>Transport:</span>
+                      <span>{customPlan.budget_breakdown.transport || 'Not specified'}</span>
+                    </div>
+                    <div className="budget-item total">
+                      <span>Total:</span>
+                      <span>{customPlan.budget_breakdown.total || 'Not specified'}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
               
               {/* Tips Card */}
               <div className="plan-card tips-card">
@@ -2046,6 +2397,9 @@ function HomePage() {
                 </div>
               </div>
             </div>
+            
+
+
             
             {/* Plan Adjustment Section */}
             <div className="plan-adjustment-section">
@@ -2115,7 +2469,7 @@ function HomePage() {
                     <div className="progress-bar">
                       <div className="progress-fill"></div>
                       <div className="kumo-progress">
-                        <img src="/Kumo.png" alt="Kumo" className="kumo-progress-img" />
+                        <img src="/kumoloading.png" alt="Kumo" className="kumo-progress-img" />
                       </div>
                     </div>
                     <p className="loading-text">🐾 Kumo is adjusting your plan...</p>
@@ -2163,9 +2517,9 @@ function HomePage() {
                 <div className="loading-container">
                   <div className="progress-bar">
                     <div className="progress-fill"></div>
-                    <div className="kumo-progress">
-                      <img src="/Kumo.png" alt="Kumo" className="kumo-progress-img" />
-                    </div>
+                                          <div className="kumo-progress">
+                        <img src="/kumoloading.png" alt="Kumo" className="kumo-progress-img" />
+                      </div>
                   </div>
                   <p className="loading-text">🐾 Kumo is crafting your travel insights...</p>
                 </div>
@@ -2264,8 +2618,12 @@ function HomePage() {
         
         {/* Chatbot Components */}
         <ChatButton 
-          onClick={() => setIsChatbotOpen(true)}
+          onClick={() => {
+            setIsChatbotOpen(true);
+            setShowChatNotification(false);
+          }}
           isActive={isChatbotOpen}
+          showNotification={showChatNotification}
         />
         
         <KumoChatbot 
@@ -2279,6 +2637,133 @@ function HomePage() {
             tripData: currentTripData
           }}
         />
+      </div>
+
+      {/* Hotel API Test Module */}
+      <div className="hotel-search-card hotel-test-module">
+        <div className="hotel-test-header">
+          <h2>🧪 Hotel API Test</h2>
+          <p className="hotel-test-desc">Check real hotel data for a city (10km radius, no budget filter)</p>
+        </div>
+        
+        <div className="hotel-test-controls">
+          <div className="hotel-test-input-group">
+            <label htmlFor="test-city-select">Select City:</label>
+            <select id="test-city-select" className="hotel-test-select" value={testCity} onChange={e => setTestCity(e.target.value)}>
+              {testCities.map(city => (
+                <option key={city.name} value={city.name}>{city.name}</option>
+              ))}
+            </select>
+          </div>
+          
+          <div className="hotel-test-actions">
+            <button className="hotel-test-btn" onClick={handleTestHotelAPI} disabled={testLoading}>
+              {testLoading ? '🔍 Searching...' : '🔍 Test API'}
+            </button>
+            {testHotels.length > 0 && (
+              <button className="hotel-test-clear-btn" onClick={() => setTestHotels([])}>
+                🗑️ Clear
+              </button>
+            )}
+          </div>
+        </div>
+        
+        {/* Status Indicators */}
+        {testLoading && (
+          <div className="hotel-test-status loading">
+            <span className="status-icon">⏳</span>
+            <span>Searching for hotels in {testCity}...</span>
+          </div>
+        )}
+        
+        {testApiSuccess && (
+          <div className="hotel-test-status success">
+            <span className="status-icon">✅</span>
+            <span>API response received</span>
+          </div>
+        )}
+        
+        {testError && (
+          <div className="hotel-test-status error">
+            <span className="status-icon">❌</span>
+            <span>{testError}</span>
+          </div>
+        )}
+        
+        {!testLoading && testHotels.length > 0 && (
+          <div className="hotel-test-status success">
+            <span className="status-icon">✅</span>
+            <span>Found {testHotels.length} hotels in {testCity}</span>
+          </div>
+        )}
+        
+        {/* Results Section */}
+        {!testLoading && testHotels.length > 0 && (
+          <div className="hotel-test-results">
+            <div className="hotel-test-results-header">
+              <h3>🏨 Hotel Results</h3>
+              <span className="hotel-count">{testHotels.length} hotels found</span>
+            </div>
+            
+            <div className="hotel-test-grid">
+              {testHotels.map((hotel, idx) => (
+                <div key={hotel.location_id || hotel.id || idx} className="hotel-test-card">
+                  <div className="hotel-test-card-image">
+                    <img 
+                      src={hotel.photo?.images?.small?.url || hotel.photo?.images?.original?.url || 'https://via.placeholder.com/200x150?text=No+Image'} 
+                      alt={hotel.name} 
+                      className="hotel-test-card-img"
+                      onError={(e) => {
+                        e.target.src = 'https://via.placeholder.com/200x150?text=No+Image';
+                      }}
+                    />
+                    {hotel.hotel_class && (
+                      <div className="hotel-class-badge">
+                        {hotel.hotel_class}★
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="hotel-test-card-content">
+                    <h4 className="hotel-test-card-name">{hotel.name || 'Unnamed Hotel'}</h4>
+                    
+                    <div className="hotel-test-card-meta">
+                      {hotel.rating && (
+                        <span className="hotel-rating">
+                          ⭐ {hotel.rating}/5
+                        </span>
+                      )}
+                      {hotel.num_reviews && (
+                        <span className="hotel-reviews">
+                          📝 {hotel.num_reviews} reviews
+                        </span>
+                      )}
+                    </div>
+                    
+                    {hotel.location_string && (
+                      <p className="hotel-test-card-location">
+                        📍 {hotel.location_string}
+                      </p>
+                    )}
+                    
+                    {hotel.description && (
+                      <p className="hotel-test-card-desc">
+                        {hotel.description.length > 100 ? hotel.description.substring(0, 100) + '...' : hotel.description}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {!testLoading && testHotels.length === 0 && testError === '' && (
+          <div className="hotel-test-empty">
+            <div className="empty-icon">🏨</div>
+            <p>No hotels found. Try a different city or check the API status.</p>
+          </div>
+        )}
       </div>
     </div>
   );

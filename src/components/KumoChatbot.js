@@ -26,29 +26,7 @@ const KumoChatbot = ({ isOpen, onClose, context }) => {
   const initializeChat = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('http://localhost:3001/api/chat/init', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId: 'user_' + Date.now(),
-          context: context || {}
-        })
-      });
-
-      const data = await response.json();
-      if (data.sessionId) {
-        setSessionId(data.sessionId);
-        setMessages([{
-          role: 'assistant',
-          content: data.message,
-          timestamp: new Date()
-        }]);
-        setIsInitialized(true);
-      }
-    } catch (error) {
-      console.error('Failed to initialize chat:', error);
+      
       // Create personalized welcome message if trip data is available
       let welcomeMessage = "Hi there! I'm Kumo, your cloud-themed red panda travel companion! 🐾✨ I'm here to help you plan the perfect trip. To get started, could you tell me:\n\n• How many people are traveling?\n• What's your budget level (1-5, where 1 is budget-friendly and 5 is luxury)?\n• What are your main interests (culture, food, adventure, relaxation, etc.)?\n• Where would you like to go?\n\nLet's make your travel dreams come true! 🌤️";
       
@@ -72,6 +50,8 @@ Perfect! I'm ready to help you with personalized recommendations for your ${trip
         timestamp: new Date()
       }]);
       setIsInitialized(true);
+    } catch (error) {
+      console.error('Failed to initialize chat:', error);
     } finally {
       setIsLoading(false);
     }
@@ -87,29 +67,78 @@ Perfect! I'm ready to help you with personalized recommendations for your ${trip
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const currentInput = inputMessage;
     setInputMessage('');
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:3001/api/chat/message', {
+      // Get OpenAI API key from environment
+      const OPENAI_API_KEY = process.env.REACT_APP_OPENAI_API_KEY;
+      
+      if (!OPENAI_API_KEY || OPENAI_API_KEY === 'your-openai-api-key-here') {
+        throw new Error('OpenAI API key not configured');
+      }
+
+      // Create conversation history for context
+      const conversationHistory = messages.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }));
+
+      // Add trip context if available
+      let systemPrompt = "You are Kumo, a friendly and knowledgeable cloud-themed red panda travel companion. You help travelers plan their trips with personalized advice, recommendations, and travel tips. Be warm, enthusiastic, and helpful. Use emojis occasionally to keep the conversation friendly.";
+      
+      if (context && context.tripData) {
+        const trip = context.tripData;
+        systemPrompt += `\n\nCurrent trip context:
+- Destination: ${trip.city}
+- Travelers: ${trip.planningData.partySize} people
+- Dates: ${trip.planningData.startDate} to ${trip.planningData.endDate}
+- Budget: Level ${trip.planningData.budget}/5
+- Traveler Type: ${trip.planningData.travelerType}
+- Interests: ${trip.planningData.interests.join(', ')}
+
+Use this context to provide personalized recommendations.`;
+      }
+
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${OPENAI_API_KEY}`
         },
         body: JSON.stringify({
-          sessionId,
-          message: inputMessage,
-          context: context || {}
+          model: 'gpt-4',
+          messages: [
+            {
+              role: 'system',
+              content: systemPrompt
+            },
+            ...conversationHistory,
+            {
+              role: 'user',
+              content: currentInput
+            }
+          ],
+          max_tokens: 500,
+          temperature: 0.7
         })
       });
 
+      if (!response.ok) {
+        throw new Error(`OpenAI API error: ${response.status}`);
+      }
+
       const data = await response.json();
-      if (data.message) {
+      
+      if (data.choices && data.choices[0] && data.choices[0].message) {
         setMessages(prev => [...prev, {
           role: 'assistant',
-          content: data.message,
+          content: data.choices[0].message.content,
           timestamp: new Date()
         }]);
+      } else {
+        throw new Error('Invalid response from OpenAI');
       }
     } catch (error) {
       console.error('Failed to send message:', error);
