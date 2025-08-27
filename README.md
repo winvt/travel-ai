@@ -70,6 +70,7 @@ Weather Info    Click Markers    Real Data      AI Assistant
 - **Features**: Personalized travel planning, recommendations, chatbot
 - **Integration**: Trip context awareness, weather adaptation
 - **Fallback**: Mock data when API unavailable
+- **Google Maps AI Assistant**: Advanced location-based AI recommendations
 
 ---
 
@@ -109,6 +110,26 @@ searchAttractionsWithGoogleMaps(cityName, service)
 ├── Top-rated attractions
 ├── Photo integration
 └── Map marker placement
+```
+
+### **Google Maps AI Assistant**
+```javascript
+handleUserPrompt(prompt)
+├── Google Maps AI Assistant integration
+├── Intelligent location-based recommendations
+├── Multi-API coordination (Places, Geocoding, Weather)
+└── Structured data extraction and mapping
+```
+
+### **MCP Google Maps Server**
+```javascript
+handleMCPGoogleMapsRequest(request)
+├── @cablate/mcp-google-map server integration
+├── Advanced location search with filters
+├── Geocoding and reverse geocoding
+├── Distance matrix and directions
+├── Elevation data retrieval
+└── Comprehensive travel route planning
 ```
 
 ---
@@ -161,6 +182,16 @@ searchAttractionsWithGoogleMaps(cityName, service)
 | **$$$$** | Luxury ($400-800) | Premium hotels, fine dining |
 | **$$$$$** | Ultra-luxury ($800+) | 5-star hotels, exclusive experiences |
 
+### **MCP Google Maps Features**
+| Feature | Description | Use Case |
+|---------|-------------|----------|
+| **🔍 Search Nearby** | Find places with radius, keyword, and type filters | Tourist attractions, restaurants, hotels |
+| **📍 Geocoding** | Convert addresses to coordinates | Location-based searches |
+| **🗺️ Directions** | Turn-by-turn navigation with multiple modes | Route planning, travel times |
+| **📏 Distance Matrix** | Calculate distances between multiple points | Multi-destination trips |
+| **🏔️ Elevation Data** | Get height above sea level | Outdoor activities, hiking |
+| **🛣️ Travel Routes** | Comprehensive route planning with waypoints | Multi-city itineraries |
+
 ---
 
 ## 🚀 Getting Started
@@ -183,13 +214,21 @@ npm install
 
 # 3. Configure Environment
 echo "REACT_APP_OPENAI_API_KEY=your-key-here" > .env
+echo "REACT_APP_GOOGLE_MAPS_API_KEY=your-google-maps-key-here" >> .env
 
 # 4. Start Development
 npm start
 
-# 5. Test APIs (Browser Console)
+# 5. Start MCP Google Maps Server (Optional)
+npm run mcp-server
+
+# 6. Start Both Servers (Development)
+npm run dev
+
+# 7. Test APIs (Browser Console)
 testAPIs();
 searchHotelsByGeocode(13.7563, 100.5018); // Bangkok
+testMCPGoogleMaps({type: 'search_nearby', location: 'Bangkok, Thailand'});
 ```
 
 ---

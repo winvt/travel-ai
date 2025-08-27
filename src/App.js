@@ -4,6 +4,9 @@ import { Loader } from '@googlemaps/js-api-loader';
 import KumoChatbot from './components/KumoChatbot';
 import ChatButton from './components/ChatButton';
 import TextType from './components/TextType';
+import { handleGoogleMapsPrompt } from './services/aiService';
+import mcpGoogleMapsService from './services/mcpGoogleMapsService';
+import Settings from './components/Settings';
 import './App.css';
 
 // API Keys
@@ -1453,7 +1456,7 @@ console.log('  - testAPIs() - Test all APIs');
 console.log('  - testGeocoding(city) - Test geocoding for a specific city');
 
 // Test geocoding function
-window.testGeocoding = async (cityName) => {
+const testGeocoding = async (cityName) => {
   console.log('🧪 Testing geocoding for:', cityName);
   
   try {
@@ -1485,6 +1488,9 @@ window.testGeocoding = async (cityName) => {
     return null;
   }
 };
+
+// Make testGeocoding available globally
+window.testGeocoding = testGeocoding;
 
 function HomePage() {
   const [destination, setDestination] = useState('');
@@ -1681,7 +1687,91 @@ function HomePage() {
     }
   };
 
+  // AI Assistant handler for Google Maps integration
+  const handleUserPrompt = async (prompt) => {
+    console.log('🤖 Processing AI Assistant request:', prompt);
+    setAiLoading(true);
+    
+    try {
+      // Use the simplified Google Maps prompt handler
+      const result = await handleGoogleMapsPrompt(prompt);
+      console.log("AI Assistant result:", result);
 
+      // For now, this is a placeholder that can be extended with actual AI processing
+      // You can integrate with OpenAI or other AI services here
+      
+      setAiLoading(false);
+      return result;
+
+    } catch (error) {
+      console.error("Error processing AI request:", error);
+      setAiLoading(false);
+      throw error;
+    }
+  };
+
+  // MCP Google Maps handler for advanced travel planning
+  const handleMCPGoogleMapsRequest = async (request) => {
+    console.log('🗺️ Processing MCP Google Maps request:', request);
+    setAiLoading(true);
+    
+    try {
+      // Check MCP server status first
+      const serverStatus = await mcpGoogleMapsService.checkMCPServerStatus();
+      console.log('MCP Server Status:', serverStatus);
+      
+      if (serverStatus.status !== 'connected') {
+        throw new Error('MCP Google Maps server is not running. Please start it with: npx @cablate/mcp-google-map --port 3001 --apikey "your_api_key"');
+      }
+
+      let result;
+      
+      // Handle different types of requests
+      if (request.type === 'search_nearby') {
+        result = await mcpGoogleMapsService.searchNearbyPlaces(
+          request.location,
+          request.radius || 5000,
+          request.keyword || '',
+          request.placeType || ''
+        );
+      } else if (request.type === 'geocode') {
+        result = await mcpGoogleMapsService.geocodeAddress(request.address);
+      } else if (request.type === 'directions') {
+        result = await mcpGoogleMapsService.getDirections(
+          request.origin,
+          request.destination,
+          request.mode || 'driving'
+        );
+      } else if (request.type === 'travel_route') {
+        result = await mcpGoogleMapsService.planTravelRoute(
+          request.startLocation,
+          request.endLocation,
+          request.waypoints || []
+        );
+      } else {
+        throw new Error(`Unknown request type: ${request.type}`);
+      }
+
+      console.log('MCP Google Maps result:', result);
+      
+      // Update state based on the result
+      if (result.places || result.attractions) {
+        setAttractions(result.places || result.attractions);
+      }
+      
+      if (result.directions) {
+        // Handle directions data
+        console.log('Directions received:', result.directions);
+      }
+
+      setAiLoading(false);
+      return result;
+    } catch (error) {
+      console.error('Error processing MCP Google Maps request:', error);
+      setAiLoading(false);
+      throw error;
+    }
+  };
 
   // Hotel API Test Module state
   const [testCity, setTestCity] = useState('Bangkok');
@@ -2636,6 +2726,16 @@ function HomePage() {
             city: selectedCity,
             tripData: currentTripData
           }}
+        />
+        
+        {/* Settings Component with API Tests */}
+        <Settings 
+          testAPIs={testAPIs}
+          handleUserPrompt={handleUserPrompt}
+          handleMCPGoogleMapsRequest={handleMCPGoogleMapsRequest}
+          testHotelAPI={testHotelAPI}
+          testMultipleCities={testMultipleCities}
+          testGeocoding={testGeocoding}
         />
       </div>
 
