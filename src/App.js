@@ -142,6 +142,9 @@ const searchHotelsByGeocode = async (latitude, longitude, budgetLevel = 3) => {
           case 1: // Budget → already at lowest, show all
             fallbackClasses.push(1, 2, 3, 4, 5);
             break;
+          default:
+            fallbackClasses.push(1, 2, 3, 4, 5);
+            break;
         }
         
         for (const classLevel of fallbackClasses) {
@@ -1394,59 +1397,59 @@ const getMockData = (city, type) => {
 };
 
 // Add hotel markers to map
-const addHotelMarkersToMap = (hotels, mapInstance, existingMarkers, setMarkers) => {
-  if (!mapInstance || !hotels || hotels.length === 0) return;
-  
-  console.log('📍 Adding hotel markers to map:', hotels.length, 'hotels');
-  
-  // Clear existing markers
-  existingMarkers.forEach(marker => marker.setMap(null));
-  
-  const newMarkers = [];
-  
-  hotels.forEach((hotel, index) => {
-    if (hotel.address && hotel.address.latitude && hotel.address.longitude) {
-      const position = {
-        lat: parseFloat(hotel.address.latitude),
-        lng: parseFloat(hotel.address.longitude)
-      };
-      
-      const marker = new window.google.maps.Marker({
-        position: position,
-        map: mapInstance,
-        title: hotel.name,
-        icon: {
-          url: 'https://maps.google.com/mapfiles/ms/icons/hotel.png',
-          scaledSize: new window.google.maps.Size(32, 32)
-        }
-      });
-      
-      // Add info window
-      const infoWindow = new window.google.maps.InfoWindow({
-        content: `
-          <div style="padding: 10px; max-width: 250px;">
-            <h3 style="margin: 0 0 5px 0; color: #333;">${hotel.name}</h3>
-            <p style="margin: 0 0 5px 0; color: #666;">⭐ ${hotel.rating}</p>
-            ${hotel.offers && hotel.offers.length > 0 ? 
-              `<p style="margin: 0; color: #28a745; font-weight: bold;">
-                From ${hotel.offers[0].price?.currency} ${hotel.offers[0].price?.total}
-              </p>` : ''
-            }
-          </div>
-        `
-      });
-      
-      marker.addListener('click', () => {
-        infoWindow.open(mapInstance, marker);
-      });
-      
-      newMarkers.push(marker);
-    }
-  });
-  
-  setMarkers(newMarkers);
-  console.log('✅ Added', newMarkers.length, 'hotel markers to map');
-};
+// const addHotelMarkersToMap = (hotels, mapInstance, existingMarkers, setMarkers) => {
+//   if (!mapInstance || !hotels || hotels.length === 0) return;
+//   
+//   console.log('📍 Adding hotel markers to map:', hotels.length, 'hotels');
+//   
+//   // Clear existing markers
+//   existingMarkers.forEach(marker => marker.setMap(null));
+//   
+//   const newMarkers = [];
+//   
+//   hotels.forEach((hotel, index) => {
+//     if (hotel.address && hotel.address.latitude && hotel.address.longitude) {
+//       const position = {
+//         lat: parseFloat(hotel.address.latitude),
+//         lng: parseFloat(hotel.address.longitude)
+//       };
+//       
+//       const marker = new window.google.maps.Marker({
+//         position: position,
+//         map: mapInstance,
+//         title: hotel.name,
+//         icon: {
+//           url: 'https://maps.google.com/mapfiles/ms/icons/hotel.png',
+//           scaledSize: new window.google.maps.Size(32, 32)
+//         }
+//       });
+//       
+//       // Add info window
+//       const infoWindow = new window.google.maps.InfoWindow({
+//         content: `
+//           <div style="padding: 10px; max-width: 250px;">
+//             <h3 style="margin: 0 0 5px 0; color: #333;">${hotel.name}</h3>
+//             <p style="margin: 0 0 5px 0; color: #666;">⭐ ${hotel.rating}</p>
+//             ${hotel.offers && hotel.offers.length > 0 ? 
+//               `<p style="code: 28a745; font-weight: bold;">
+//                 From ${hotel.offers[0].price?.currency} ${hotel.offers[0].price?.total}
+//               </p>` : ''
+//             }
+//           </div>
+//         `
+//       });
+//       
+//       marker.addListener('click', () => {
+//         infoWindow.open(mapInstance, marker);
+//       });
+//       
+//       newMarkers.push(marker);
+//     }
+//   });
+//   
+//   setMarkers(newMarkers);
+//   console.log('✅ Added', newMarkers.length, 'hotel markers to map');
+// };
 
 // Make testing functions available globally for easy console access
 window.testHotelAPI = testHotelAPI;
@@ -1525,8 +1528,8 @@ function HomePage() {
   
   // Hotel search state
   const [hotels, setHotels] = useState([]);
-  const [isSearchingHotels, setIsSearchingHotels] = useState(false);
-  const [hotelMarkers, setHotelMarkers] = useState([]);
+  // const [isSearchingHotels, setIsSearchingHotels] = useState(false);
+  // const [hotelMarkers, setHotelMarkers] = useState([]);
   
   // Chatbot state
   const [isChatbotOpen, setIsChatbotOpen] = useState(false);
@@ -2250,7 +2253,7 @@ function HomePage() {
                         
                         // Set default dates if empty - use current date or handle future dates
                         const today = new Date();
-                        const currentDate = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+                        // const currentDate = today.toISOString().split('T')[0]; // YYYY-MM-DD format
                         
                         let startDate = planningData.startDate;
                         let endDate = planningData.endDate;
@@ -2297,7 +2300,7 @@ function HomePage() {
                         
                         if (startDate && endDate && cityToSearch) {
                           console.log('🏨 Searching hotels for:', cityToSearch, 'with dates:', startDate, 'to', endDate);
-                          setIsSearchingHotels(true);
+                          // setIsSearchingHotels(true);
                           hotelResults = await searchHotels(cityToSearch, startDate, endDate, planningData.partySize, planningData.budget);
                           setHotels(hotelResults);
                         } else {
@@ -2707,7 +2710,7 @@ function HomePage() {
                   setCustomPlan(null);
                   setHotels([]);
                   setPlanLoading(false);
-                  setIsSearchingHotels(false);
+                                          // setIsSearchingHotels(false);
                   setPlanAdjustment('');
                 }}
               >

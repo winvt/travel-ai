@@ -4,7 +4,7 @@ import './KumoChatbot.css';
 const KumoChatbot = ({ isOpen, onClose, context }) => {
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
-  const [sessionId, setSessionId] = useState(null);
+  // const [sessionId, setSessionId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const messagesEndRef = useRef(null);

@@ -79,7 +79,7 @@ const Settings = ({
   const enhancedTestMCP = async () => {
     addDebugLog('Testing MCP Google Maps...', 'info');
     try {
-      const result = await handleMCPGoogleMapsRequest({
+      await handleMCPGoogleMapsRequest({
         type: 'search_nearby',
         location: 'Bangkok, Thailand',
         radius: 5000,
