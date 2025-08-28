@@ -28,7 +28,8 @@ const Settings = ({
     addDebugLog('Checking MCP server status...', 'info');
     
     try {
-      const response = await fetch('http://localhost:3001/mcp', {
+      const mcpServerUrl = process.env.REACT_APP_MCP_SERVER_URL || 'http://localhost:3001/mcp';
+      const response = await fetch(mcpServerUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -78,7 +79,7 @@ const Settings = ({
   const enhancedTestMCP = async () => {
     addDebugLog('Testing MCP Google Maps...', 'info');
     try {
-      const result = await handleMCPGoogleMapsRequest({
+      await handleMCPGoogleMapsRequest({
         type: 'search_nearby',
         location: 'Bangkok, Thailand',
         radius: 5000,

@@ -7,12 +7,14 @@ import TextType from './components/TextType';
 import { handleGoogleMapsPrompt } from './services/aiService';
 import mcpGoogleMapsService from './services/mcpGoogleMapsService';
 import Settings from './components/Settings';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 import './App.css';
 
 // API Keys
-const GOOGLE_MAPS_API_KEY = 'AIzaSyCW9G1CBbrs87Gb9gUbhaYpwB0mnpQUGf4';
+const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || 'your-google-maps-api-key-here';
 const OPENAI_API_KEY = process.env.REACT_APP_OPENAI_API_KEY || 'your-openai-api-key-here';
-const MONGODB_URI = 'mongodb+srv://winvarit:12345@cluster0.uhgsfzc.mongodb.net/';
+const MONGODB_URI = process.env.REACT_APP_MONGODB_URI || 'mongodb+srv://winvarit:12345@cluster0.uhgsfzc.mongodb.net/';
 
 // Travel Advisor API function
 const searchHotelsByGeocode = async (latitude, longitude, budgetLevel = 3) => {
@@ -29,7 +31,7 @@ const searchHotelsByGeocode = async (latitude, longitude, budgetLevel = 3) => {
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'X-RapidAPI-Key': 'dd41c3b481msh51c9e846214042ap1395aejsn98d3615f27bb',
+        'X-RapidAPI-Key': process.env.REACT_APP_TRAVEL_ADVISOR_API_KEY || 'dd41c3b481msh51c9e846214042ap1395aejsn98d3615f27bb',
         'X-RapidAPI-Host': 'travel-advisor.p.rapidapi.com'
       }
     });
@@ -138,6 +140,9 @@ const searchHotelsByGeocode = async (latitude, longitude, budgetLevel = 3) => {
             fallbackClasses.push(1);
             break;
           case 1: // Budget → already at lowest, show all
+            fallbackClasses.push(1, 2, 3, 4, 5);
+            break;
+          default:
             fallbackClasses.push(1, 2, 3, 4, 5);
             break;
         }
@@ -651,7 +656,9 @@ const validateAndFormatCity = async (inputCity) => {
   // Try to get city code from Amadeus API for validation
   try {
     console.log('🌐 Checking city with Amadeus API...');
-    const proxyUrl = `http://localhost:3001/api/cities?keyword=${encodeURIComponent(inputCity)}`;
+    const mcpServerUrl = process.env.REACT_APP_MCP_SERVER_URL || 'http://localhost:3001/mcp';
+    const baseUrl = mcpServerUrl.replace('/mcp', '');
+    const proxyUrl = `${baseUrl}/api/cities?keyword=${encodeURIComponent(inputCity)}`;
     const response = await fetch(proxyUrl);
     
     if (response.ok) {
@@ -1111,7 +1118,7 @@ const testHotelAPI = async (latitude = 42.3555076, longitude = -71.0565364, budg
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'X-RapidAPI-Key': 'dd41c3b481msh51c9e846214042ap1395aejsn98d3615f27bb',
+        'X-RapidAPI-Key': process.env.REACT_APP_TRAVEL_ADVISOR_API_KEY || 'dd41c3b481msh51c9e846214042ap1395aejsn98d3615f27bb',
         'X-RapidAPI-Host': 'travel-advisor.p.rapidapi.com'
       }
     });
@@ -1390,59 +1397,59 @@ const getMockData = (city, type) => {
 };
 
 // Add hotel markers to map
-const addHotelMarkersToMap = (hotels, mapInstance, existingMarkers, setMarkers) => {
-  if (!mapInstance || !hotels || hotels.length === 0) return;
-  
-  console.log('📍 Adding hotel markers to map:', hotels.length, 'hotels');
-  
-  // Clear existing markers
-  existingMarkers.forEach(marker => marker.setMap(null));
-  
-  const newMarkers = [];
-  
-  hotels.forEach((hotel, index) => {
-    if (hotel.address && hotel.address.latitude && hotel.address.longitude) {
-      const position = {
-        lat: parseFloat(hotel.address.latitude),
-        lng: parseFloat(hotel.address.longitude)
-      };
-      
-      const marker = new window.google.maps.Marker({
-        position: position,
-        map: mapInstance,
-        title: hotel.name,
-        icon: {
-          url: 'https://maps.google.com/mapfiles/ms/icons/hotel.png',
-          scaledSize: new window.google.maps.Size(32, 32)
-        }
-      });
-      
-      // Add info window
-      const infoWindow = new window.google.maps.InfoWindow({
-        content: `
-          <div style="padding: 10px; max-width: 250px;">
-            <h3 style="margin: 0 0 5px 0; color: #333;">${hotel.name}</h3>
-            <p style="margin: 0 0 5px 0; color: #666;">⭐ ${hotel.rating}</p>
-            ${hotel.offers && hotel.offers.length > 0 ? 
-              `<p style="margin: 0; color: #28a745; font-weight: bold;">
-                From ${hotel.offers[0].price?.currency} ${hotel.offers[0].price?.total}
-              </p>` : ''
-            }
-          </div>
-        `
-      });
-      
-      marker.addListener('click', () => {
-        infoWindow.open(mapInstance, marker);
-      });
-      
-      newMarkers.push(marker);
-    }
-  });
-  
-  setMarkers(newMarkers);
-  console.log('✅ Added', newMarkers.length, 'hotel markers to map');
-};
+// const addHotelMarkersToMap = (hotels, mapInstance, existingMarkers, setMarkers) => {
+//   if (!mapInstance || !hotels || hotels.length === 0) return;
+//   
+//   console.log('📍 Adding hotel markers to map:', hotels.length, 'hotels');
+//   
+//   // Clear existing markers
+//   existingMarkers.forEach(marker => marker.setMap(null));
+//   
+//   const newMarkers = [];
+//   
+//   hotels.forEach((hotel, index) => {
+//     if (hotel.address && hotel.address.latitude && hotel.address.longitude) {
+//       const position = {
+//         lat: parseFloat(hotel.address.latitude),
+//         lng: parseFloat(hotel.address.longitude)
+//       };
+//       
+//       const marker = new window.google.maps.Marker({
+//         position: position,
+//         map: mapInstance,
+//         title: hotel.name,
+//         icon: {
+//           url: 'https://maps.google.com/mapfiles/ms/icons/hotel.png',
+//           scaledSize: new window.google.maps.Size(32, 32)
+//         }
+//       });
+//       
+//       // Add info window
+//       const infoWindow = new window.google.maps.InfoWindow({
+//         content: `
+//           <div style="padding: 10px; max-width: 250px;">
+//             <h3 style="margin: 0 0 5px 0; color: #333;">${hotel.name}</h3>
+//             <p style="margin: 0 0 5px 0; color: #666;">⭐ ${hotel.rating}</p>
+//             ${hotel.offers && hotel.offers.length > 0 ? 
+//               `<p style="code: 28a745; font-weight: bold;">
+//                 From ${hotel.offers[0].price?.currency} ${hotel.offers[0].price?.total}
+//               </p>` : ''
+//             }
+//           </div>
+//         `
+//       });
+//       
+//       marker.addListener('click', () => {
+//         infoWindow.open(mapInstance, marker);
+//       });
+//       
+//       newMarkers.push(marker);
+//     }
+//   });
+//   
+//   setMarkers(newMarkers);
+//   console.log('✅ Added', newMarkers.length, 'hotel markers to map');
+// };
 
 // Make testing functions available globally for easy console access
 window.testHotelAPI = testHotelAPI;
@@ -1521,8 +1528,8 @@ function HomePage() {
   
   // Hotel search state
   const [hotels, setHotels] = useState([]);
-  const [isSearchingHotels, setIsSearchingHotels] = useState(false);
-  const [hotelMarkers, setHotelMarkers] = useState([]);
+  // const [isSearchingHotels, setIsSearchingHotels] = useState(false);
+  // const [hotelMarkers, setHotelMarkers] = useState([]);
   
   // Chatbot state
   const [isChatbotOpen, setIsChatbotOpen] = useState(false);
@@ -1805,7 +1812,7 @@ function HomePage() {
       const response = await fetch(url, {
         method: 'GET',
         headers: {
-          'X-RapidAPI-Key': 'dd41c3b481msh51c9e846214042ap1395aejsn98d3615f27bb',
+          'X-RapidAPI-Key': process.env.REACT_APP_TRAVEL_ADVISOR_API_KEY || 'dd41c3b481msh51c9e846214042ap1395aejsn98d3615f27bb',
           'X-RapidAPI-Host': 'travel-advisor.p.rapidapi.com'
         }
       });
@@ -1828,11 +1835,207 @@ function HomePage() {
     setTestLoading(false);
   };
 
+  // Function to generate PDF
+  const generatePDF = async () => {
+    if (!customPlan || !selectedCity) return;
+    
+    try {
+      console.log('📄 Generating PDF for trip to:', selectedCity);
+      
+      // Create a temporary container for PDF content
+      const pdfContainer = document.createElement('div');
+      pdfContainer.style.position = 'absolute';
+      pdfContainer.style.left = '-9999px';
+      pdfContainer.style.top = '0';
+      pdfContainer.style.width = '800px';
+      pdfContainer.style.backgroundColor = 'white';
+      pdfContainer.style.color = 'black';
+      pdfContainer.style.padding = '40px';
+      pdfContainer.style.fontFamily = 'Arial, sans-serif';
+      pdfContainer.style.fontSize = '12px';
+      pdfContainer.style.lineHeight = '1.4';
+      
+      // Create PDF content
+      pdfContainer.innerHTML = `
+        <div style="text-align: center; margin-bottom: 50px; padding: 40px 0; border-bottom: 3px solid #667eea;">
+          <h1 style="color: #333; font-size: 42px; margin-bottom: 20px; font-weight: 700;">KUMO Travel Plan</h1>
+          <h2 style="color: #667eea; font-size: 28px; margin-bottom: 30px; font-weight: 600;">${selectedCity} - ${planningData.startDate} to ${planningData.endDate}</h2>
+          <div style="display: flex; justify-content: center; gap: 40px; font-size: 16px; color: #555;">
+            <span><strong>Travelers:</strong> ${planningData.partySize} ${planningData.travelerType}</span>
+            <span><strong>Budget Level:</strong> ${planningData.budget}/5</span>
+            <span><strong>Interests:</strong> ${planningData.interests.join(', ')}</span>
+          </div>
+        </div>
+        
+        <div style="margin-bottom: 60px; page-break-after: always;">
+          <h3 style="color: #333; font-size: 32px; border-bottom: 3px solid #667eea; padding-bottom: 15px; margin-bottom: 30px; font-weight: 700;">TRIP OVERVIEW</h3>
+          <div style="font-size: 16px; line-height: 1.8; color: #333;">
+            <p style="margin-bottom: 15px;"><strong>Destination:</strong> ${selectedCity}</p>
+            <p style="margin-bottom: 15px;"><strong>Duration:</strong> ${planningData.startDate} to ${planningData.endDate}</p>
+            <p style="margin-bottom: 15px;"><strong>Total Budget:</strong> $${customPlan.total_budget || 'TBD'}</p>
+            <p style="margin-bottom: 15px;"><strong>Daily Budget:</strong> $${customPlan.daily_budget || 'TBD'}</p>
+            <p style="margin-bottom: 15px;"><strong>Travelers:</strong> ${planningData.partySize} ${planningData.travelerType}</p>
+            <p style="margin-bottom: 15px;"><strong>Budget Level:</strong> ${planningData.budget}/5</p>
+            <p style="margin-bottom: 15px;"><strong>Interests:</strong> ${planningData.interests.join(', ')}</p>
+          </div>
+        </div>
+        
+        <div style="margin-bottom: 60px; page-break-after: always;">
+          <h3 style="color: #333; font-size: 32px; border-bottom: 3px solid #667eea; padding-bottom: 15px; margin-bottom: 30px; font-weight: 700;">DAILY ITINERARY</h3>
+          ${(customPlan.itinerary && Array.isArray(customPlan.itinerary) ? customPlan.itinerary.slice(0, 3) : []).map((day, index) => `
+            <div style="margin-bottom: 40px;">
+              <h4 style="color: #667eea; font-size: 24px; margin-bottom: 20px; font-weight: 600; border-bottom: 2px solid #667eea; padding-bottom: 10px;">DAY ${index + 1} - ${day.date || 'TBD'}</h4>
+              
+              <div style="margin-bottom: 25px;">
+                <h5 style="color: #333; font-size: 18px; margin-bottom: 15px; font-weight: 600;">🌅 MORNING (9:00 AM)</h5>
+                <div style="font-size: 16px; line-height: 1.8; color: #333; margin-left: 20px;">
+                  <p style="margin-bottom: 10px;"><strong>Activity:</strong> ${day.morning?.activity || 'TBD'}</p>
+                  <p style="margin-bottom: 10px;"><strong>Transport:</strong> ${day.morning?.transport || 'TBD'}</p>
+                  <p style="margin-bottom: 10px;"><strong>Weather:</strong> ${day.morning?.weather || 'TBD'}</p>
+                </div>
+              </div>
+              
+              <div style="margin-bottom: 25px;">
+                <h5 style="color: #333; font-size: 18px; margin-bottom: 15px; font-weight: 600;">☀️ AFTERNOON (2:00 PM)</h5>
+                <div style="font-size: 16px; line-height: 1.8; color: #333; margin-left: 20px;">
+                  <p style="margin-bottom: 10px;"><strong>Activity:</strong> ${day.afternoon?.activity || 'TBD'}</p>
+                  <p style="margin-bottom: 10px;"><strong>Transport:</strong> ${day.afternoon?.transport || 'TBD'}</p>
+                  <p style="margin-bottom: 10px;"><strong>Weather:</strong> ${day.afternoon?.weather || 'TBD'}</p>
+                </div>
+              </div>
+              
+              <div style="margin-bottom: 25px;">
+                <h5 style="color: #333; font-size: 18px; margin-bottom: 15px; font-weight: 600;">🌙 EVENING (7:00 PM)</h5>
+                <div style="font-size: 16px; line-height: 1.8; color: #333; margin-left: 20px;">
+                  <p style="margin-bottom: 10px;"><strong>Activity:</strong> ${day.evening?.activity || 'TBD'}</p>
+                  <p style="margin-bottom: 10px;"><strong>Transport:</strong> ${day.evening?.transport || 'TBD'}</p>
+                  <p style="margin-bottom: 10px;"><strong>Weather:</strong> ${day.evening?.weather || 'TBD'}</p>
+                </div>
+              </div>
+              
+              ${day.meals && Array.isArray(day.meals) && day.meals.length > 0 ? `
+                <div style="margin-bottom: 25px;">
+                  <h5 style="color: #333; font-size: 18px; margin-bottom: 15px; font-weight: 600;">🍽️ MEALS</h5>
+                  <div style="font-size: 16px; line-height: 1.8; color: #333; margin-left: 20px;">
+                    ${day.meals.map(meal => `
+                      <p style="margin-bottom: 10px;"><strong>${meal.time || 'Meal'}:</strong> ${meal.place || meal}</p>
+                    `).join('')}
+                  </div>
+                </div>
+              ` : ''}
+              
+              ${day.flow_tips ? `
+                <div style="margin-bottom: 25px;">
+                  <h5 style="color: #333; font-size: 18px; margin-bottom: 15px; font-weight: 600;">💡 FLOW TIPS</h5>
+                  <div style="font-size: 16px; line-height: 1.8; color: #333; margin-left: 20px;">
+                    <p style="margin-bottom: 10px;">${day.flow_tips}</p>
+                  </div>
+                </div>
+              ` : ''}
+              
+              ${day.budget_notes ? `
+                <div style="margin-bottom: 25px;">
+                  <h5 style="color: #333; font-size: 18px; margin-bottom: 15px; font-weight: 600;">💰 BUDGET NOTES</h5>
+                  <div style="font-size: 16px; line-height: 1.8; color: #333; margin-left: 20px;">
+                    <p style="margin-bottom: 10px;">${day.budget_notes}</p>
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+          `).join('')}
+        </div>
+        
+        ${customPlan.accommodation_recommendations && Array.isArray(customPlan.accommodation_recommendations) && customPlan.accommodation_recommendations.length > 0 ? `
+          <div style="margin-bottom: 60px; page-break-after: always;">
+            <h3 style="color: #333; font-size: 32px; border-bottom: 3px solid #667eea; padding-bottom: 15px; margin-bottom: 30px; font-weight: 700;">ACCOMMODATION RECOMMENDATIONS</h3>
+            <div style="font-size: 16px; line-height: 1.8; color: #333;">
+              ${customPlan.accommodation_recommendations.map((hotel, index) => `
+                <div style="margin-bottom: 30px;">
+                  <h4 style="color: #667eea; font-size: 20px; margin-bottom: 15px; font-weight: 600;">${index + 1}. ${hotel.name || hotel || 'Hotel'}</h4>
+                  <div style="margin-left: 20px;">
+                    <p style="margin-bottom: 10px;"><strong>Rating:</strong> ${hotel.rating || 'N/A'}/5</p>
+                    <p style="margin-bottom: 10px;"><strong>Price Range:</strong> ${hotel.price_range || 'N/A'}</p>
+                    <p style="margin-bottom: 10px;"><strong>Location:</strong> ${hotel.location || 'N/A'}</p>
+                    ${hotel.description ? `<p style="margin-bottom: 10px;"><strong>Description:</strong> ${hotel.description}</p>` : ''}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+        
+        ${customPlan.travel_tips && Array.isArray(customPlan.travel_tips) && customPlan.travel_tips.length > 0 ? `
+          <div style="margin-bottom: 60px;">
+            <h3 style="color: #333; font-size: 32px; border-bottom: 3px solid #667eea; padding-bottom: 15px; margin-bottom: 30px; font-weight: 700;">TRAVEL TIPS</h3>
+            <div style="font-size: 16px; line-height: 1.8; color: #333;">
+              ${customPlan.travel_tips.map((tip, index) => `
+                <div style="margin-bottom: 20px;">
+                  <h4 style="color: #667eea; font-size: 18px; margin-bottom: 10px; font-weight: 600;">${index + 1}. Travel Tip</h4>
+                  <p style="margin-left: 20px; margin-bottom: 10px;">${tip}</p>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+        
+        <div style="text-align: center; margin-top: 60px; padding: 40px 0; border-top: 3px solid #667eea;">
+          <h3 style="color: #333; font-size: 24px; margin-bottom: 15px; font-weight: 600;">Generated by KUMO</h3>
+          <p style="color: #666; font-size: 16px; margin-bottom: 10px;">AI Powered Travel Planning</p>
+          <p style="color: #999; font-size: 14px;">Generated on: ${new Date().toLocaleDateString()}</p>
+        </div>
+      `;
+      
+      // Add container to DOM
+      document.body.appendChild(pdfContainer);
+      
+      // Convert to canvas
+      const canvas = await html2canvas(pdfContainer, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff'
+      });
+      
+      // Remove container from DOM
+      document.body.removeChild(pdfContainer);
+      
+      // Create PDF
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const imgWidth = 210;
+      const pageHeight = 295;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+      
+      // Add first page
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+      
+      // Add additional pages if needed
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+      
+      // Save PDF
+      const fileName = `KUMO_Travel_Plan_${selectedCity}_${planningData.startDate}_${planningData.endDate}.pdf`;
+      pdf.save(fileName);
+      
+      console.log('✅ PDF generated successfully:', fileName);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Failed to generate PDF. Please try again.');
+    }
+  };
+
   return (
     <div className="App">
       <div className="hero-section">
         <TextType 
-          text="WanderWise"
+          text="KUMO"
           as="h1"
           typingSpeed={100}
           initialDelay={500}
@@ -1841,7 +2044,7 @@ function HomePage() {
           className="hero-title"
         />
         <TextType 
-          text="We plan your trip"
+          text="we plan your trip"
           as="p"
           className="tagline"
           typingSpeed={80}
@@ -1850,7 +2053,7 @@ function HomePage() {
           cursorCharacter="|"
         />
         <TextType 
-          text="AI-powered travel planning powered by kumo"
+          text="AI powered travel planning"
           as="p"
           className="subtitle"
           typingSpeed={60}
@@ -1858,26 +2061,6 @@ function HomePage() {
           showCursor={true}
           cursorCharacter="|"
         />
-        
-        {/* Test API Button */}
-        <button 
-          className="test-api-btn"
-          onClick={testAPIs}
-          style={{
-            background: 'linear-gradient(45deg, #ff6b6b, #ee5a24)',
-            color: 'white',
-            border: 'none',
-            padding: '10px 20px',
-            borderRadius: '25px',
-            cursor: 'pointer',
-            marginBottom: '10px',
-            fontSize: '14px',
-            fontWeight: '600',
-            marginTop: '15px'
-          }}
-        >
-          🧪 Test APIs
-        </button>
         
 
       </div>
@@ -2070,7 +2253,7 @@ function HomePage() {
                         
                         // Set default dates if empty - use current date or handle future dates
                         const today = new Date();
-                        const currentDate = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+                        // const currentDate = today.toISOString().split('T')[0]; // YYYY-MM-DD format
                         
                         let startDate = planningData.startDate;
                         let endDate = planningData.endDate;
@@ -2117,7 +2300,7 @@ function HomePage() {
                         
                         if (startDate && endDate && cityToSearch) {
                           console.log('🏨 Searching hotels for:', cityToSearch, 'with dates:', startDate, 'to', endDate);
-                          setIsSearchingHotels(true);
+                          // setIsSearchingHotels(true);
                           hotelResults = await searchHotels(cityToSearch, startDate, endDate, planningData.partySize, planningData.budget);
                           setHotels(hotelResults);
                         } else {
@@ -2231,214 +2414,7 @@ function HomePage() {
                 </div>
               </div>
               
-              {/* Hotel Search Card */}
-              <div className="plan-card hotel-search-card">
-                <h3>🏨 Real Hotel Options</h3>
-                <div className="budget-filter-info">
-                  <span className="budget-badge">
-                    {planningData.budget === 1 ? 'Budget ($)' : 
-                     planningData.budget === 2 ? 'Economy ($$)' :
-                     planningData.budget === 3 ? 'Mid-range ($$$)' :
-                     planningData.budget === 4 ? 'Luxury ($$$$)' : 'Ultra-luxury ($$$$$)'}
-                  </span>
-                  <span className="hotel-count">{hotels.length} hotels found</span>
-                </div>
-                
-                {isSearchingHotels ? (
-                  <div className="hotel-loading">
-                    <div className="loading-spinner"></div>
-                    <p>🔍 Searching for hotels...</p>
-                  </div>
-                ) : hotels.length > 0 ? (
-                  <div className="hotel-list">
-                    {hotels.slice(0, 5).map((hotel, index) => (
-                      <div key={index} className="hotel-card">
-                        {/* Hotel Image */}
-                        {hotel.photo && (
-                          <div className="hotel-image-container">
-                            <img 
-                              src={hotel.photo} 
-                              alt={hotel.name}
-                              className="hotel-image"
-                              onError={(e) => {
-                                e.target.style.display = 'none';
-                                e.target.nextSibling.style.display = 'block';
-                              }}
-                            />
-                            <div className="hotel-image-placeholder" style={{display: 'none'}}>
-                              🏨
-                            </div>
-                          </div>
-                        )}
-                        
-                        <div className="hotel-content">
-                          <div className="hotel-header">
-                            <h4>{hotel.name}</h4>
-                            {hotel.rating !== 'N/A' && (
-                              <span className="hotel-rating">⭐ {hotel.rating}</span>
-                            )}
-                          </div>
-                          
-                          {hotel.hotelClass && hotel.hotelClass !== 'N/A' && (
-                            <p className="hotel-class">🏆 {hotel.hotelClass}-star hotel</p>
-                          )}
-                          
-                          {hotel.numReviews && hotel.numReviews !== 'N/A' && (
-                            <p className="hotel-reviews">📝 {hotel.numReviews} reviews</p>
-                          )}
-                          
-                          {hotel.address && (
-                            <p className="hotel-address">📍 {hotel.address.cityName}, {hotel.address.countryCode}</p>
-                          )}
-                          
-                          {hotel.offers && hotel.offers.length > 0 && (
-                            <div className="hotel-offers">
-                              <p><strong>Available Rooms:</strong></p>
-                              {hotel.offers.slice(0, 3).map((offer, offerIndex) => (
-                                <div key={offerIndex} className="hotel-offer">
-                                  <span className="room-type">{offer.roomType}</span>
-                                  <span className="price">{offer.price.currency} {offer.price.total}</span>
-                                </div>
-                              ))}
-                              {hotel.dateNote && (
-                                <p className="date-note">📅 {hotel.dateNote}</p>
-                              )}
-                            </div>
-                          )}
-                          
-                          <div className="hotel-actions">
-                            <button 
-                              className="view-on-map-btn"
-                              onClick={() => {
-                                if (hotel.address && hotel.address.latitude && hotel.address.longitude) {
-                                  map.setCenter({ 
-                                    lat: parseFloat(hotel.address.latitude), 
-                                    lng: parseFloat(hotel.address.longitude) 
-                                  });
-                                  map.setZoom(15);
-                                }
-                              }}
-                            >
-                              🗺️ View on Map
-                            </button>
-                            
-                            {hotel.webUrl && (
-                              <a 
-                                href={hotel.webUrl} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="view-details-btn"
-                              >
-                                🔗 View Details
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="no-hotels">No hotels found for the selected criteria.</p>
-                )}
-              </div>
-              
-              {/* Itinerary Card */}
-              <div className="plan-card itinerary-card">
-                <h3>🗓️ Daily Itinerary</h3>
-                <div className="itinerary-list">
-                  {customPlan.itinerary.map((day, index) => (
-                    <div key={index} className="day-item">
-                      <h4>{day.day} - {day.date}</h4>
-                      
-                      {/* Weather Forecast */}
-                      {day.weather_forecast && (
-                        <div className="weather-forecast">
-                          <h5>🌤️ Weather: {day.weather_forecast}</h5>
-                        </div>
-                      )}
-                      
-                      {/* Morning */}
-                      {day.morning && (
-                        <div className="time-slot morning">
-                          <h5>🌅 Morning ({day.morning.time})</h5>
-                          <p><strong>Activity:</strong> {day.morning.activity}</p>
-                          <p><strong>Transport:</strong> {day.morning.transport}</p>
-                          {day.morning.weather_consideration && (
-                            <p><strong>Weather Note:</strong> {day.morning.weather_consideration}</p>
-                          )}
-                        </div>
-                      )}
-                      
-                      {/* Afternoon */}
-                      {day.afternoon && (
-                        <div className="time-slot afternoon">
-                          <h5>☀️ Afternoon ({day.afternoon.time})</h5>
-                          <p><strong>Activity:</strong> {day.afternoon.activity}</p>
-                          <p><strong>Transport:</strong> {day.afternoon.transport}</p>
-                          {day.afternoon.weather_consideration && (
-                            <p><strong>Weather Note:</strong> {day.afternoon.weather_consideration}</p>
-                          )}
-                        </div>
-                      )}
-                      
-                      {/* Evening */}
-                      {day.evening && (
-                        <div className="time-slot evening">
-                          <h5>🌙 Evening ({day.evening.time})</h5>
-                          <p><strong>Activity:</strong> {day.evening.activity}</p>
-                          <p><strong>Transport:</strong> {day.evening.transport}</p>
-                          {day.evening.weather_consideration && (
-                            <p><strong>Weather Note:</strong> {day.evening.weather_consideration}</p>
-                          )}
-                        </div>
-                      )}
-                      
-                      {/* Meals */}
-                      {day.meals && (
-                        <div className="meals">
-                          <h5>🍽️ Meals</h5>
-                          <div className="meal-times">
-                            <span><strong>Breakfast:</strong> {day.meals.breakfast || 'Not specified'}</span>
-                            <span><strong>Lunch:</strong> {day.meals.lunch || 'Not specified'}</span>
-                            <span><strong>Dinner:</strong> {day.meals.dinner || 'Not specified'}</span>
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* Flow Tips */}
-                      {day.flow_tips && (
-                        <div className="flow-tips">
-                          <h5>💡 Flow Tips</h5>
-                          <p>{day.flow_tips}</p>
-                        </div>
-                      )}
-                      
-                      {/* Budget Notes */}
-                      {day.budget_notes && (
-                        <div className="budget-notes">
-                          <h5>💰 Budget Notes</h5>
-                          <p>{day.budget_notes}</p>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-              
-              {/* Weather Preparation Card */}
-              {customPlan.weather_preparation && (
-                <div className="plan-card weather-prep-card">
-                  <h3>🌤️ Weather Preparation</h3>
-                  <div className="weather-prep-list">
-                    {customPlan.weather_preparation.map((prep, index) => (
-                      <div key={index} className="prep-item">
-                        <span className="prep-number">{index + 1}</span>
-                        <span className="prep-text">{typeof prep === 'string' ? prep : JSON.stringify(prep)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+
               
               {/* Budget Card */}
               {customPlan.budget_breakdown && (
@@ -2488,8 +2464,154 @@ function HomePage() {
               </div>
             </div>
             
-
-
+            {/* New Large Central Itinerary Container */}
+            <div className="itinerary-central-container">
+              <div className="itinerary-central-header">
+                <h3>🗓️ Your Adventure Timeline</h3>
+                <p className="itinerary-central-subtitle">Follow your journey through 3 amazing days</p>
+              </div>
+              
+              <div className="itinerary-central-content">
+                <div className="itinerary-central-grid">
+                  {customPlan.itinerary.slice(0, 3).map((day, index) => (
+                    <div key={index} className="day-card">
+                      <div className="day-header">
+                        <div className="day-number">{index + 1}</div>
+                        <div className="day-info">
+                          <h4>{day.day}</h4>
+                          <span className="day-date">{day.date}</span>
+                        </div>
+                      </div>
+                      
+                      {/* Weather Forecast */}
+                      {day.weather_forecast && (
+                        <div className="day-weather">
+                          <span className="weather-icon">🌤️</span>
+                          <span className="weather-text">{day.weather_forecast}</span>
+                        </div>
+                      )}
+                      
+                      <div className="day-timeline">
+                        {/* Morning */}
+                        {day.morning && (
+                          <div className="timeline-item morning">
+                            <div className="timeline-icon">🌅</div>
+                            <div className="timeline-content">
+                              <h5>Morning ({day.morning.time})</h5>
+                              <div className="activity-details">
+                                <div className="activity-item">
+                                  <span className="activity-label">Activity:</span>
+                                  <span className="activity-text">{day.morning.activity}</span>
+                                </div>
+                                <div className="activity-item">
+                                  <span className="activity-label">Transport:</span>
+                                  <span className="activity-text">{day.morning.transport}</span>
+                                </div>
+                                {day.morning.weather_consideration && (
+                                  <div className="activity-item">
+                                    <span className="activity-label">Weather:</span>
+                                    <span className="activity-text">{day.morning.weather_consideration}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Afternoon */}
+                        {day.afternoon && (
+                          <div className="timeline-item afternoon">
+                            <div className="timeline-icon">☀️</div>
+                            <div className="timeline-content">
+                              <h5>Afternoon ({day.afternoon.time})</h5>
+                              <div className="activity-details">
+                                <div className="activity-item">
+                                  <span className="activity-label">Activity:</span>
+                                  <span className="activity-text">{day.afternoon.activity}</span>
+                                </div>
+                                <div className="activity-item">
+                                  <span className="activity-label">Transport:</span>
+                                  <span className="activity-text">{day.afternoon.transport}</span>
+                                </div>
+                                {day.afternoon.weather_consideration && (
+                                  <div className="activity-item">
+                                    <span className="activity-label">Weather:</span>
+                                    <span className="activity-text">{day.afternoon.weather_consideration}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Evening */}
+                        {day.evening && (
+                          <div className="timeline-item evening">
+                            <div className="timeline-icon">🌙</div>
+                            <div className="timeline-content">
+                              <h5>Evening ({day.evening.time})</h5>
+                              <div className="activity-details">
+                                <div className="activity-item">
+                                  <span className="activity-label">Activity:</span>
+                                  <span className="activity-text">{day.evening.activity}</span>
+                                </div>
+                                <div className="activity-item">
+                                  <span className="activity-label">Transport:</span>
+                                  <span className="activity-text">{day.evening.transport}</span>
+                                </div>
+                                {day.evening.weather_consideration && (
+                                  <div className="activity-item">
+                                    <span className="activity-label">Weather:</span>
+                                    <span className="activity-text">{day.evening.weather_consideration}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Meals */}
+                      {day.meals && (
+                        <div className="day-meals">
+                          <h5>🍽️ Meals</h5>
+                          <div className="meals-grid">
+                            <div className="meal-item">
+                              <span className="meal-time">Breakfast</span>
+                              <span className="meal-place">{day.meals.breakfast || 'Not specified'}</span>
+                            </div>
+                            <div className="meal-item">
+                              <span className="meal-time">Lunch</span>
+                              <span className="meal-place">{day.meals.lunch || 'Not specified'}</span>
+                            </div>
+                            <div className="meal-item">
+                              <span className="meal-time">Dinner</span>
+                              <span className="meal-place">{day.meals.dinner || 'Not specified'}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Flow Tips */}
+                      {day.flow_tips && (
+                        <div className="day-tips">
+                          <h5>💡 Flow Tips</h5>
+                          <p>{day.flow_tips}</p>
+                        </div>
+                      )}
+                      
+                      {/* Budget Notes */}
+                      {day.budget_notes && (
+                        <div className="day-budget">
+                          <h5>💰 Budget Notes</h5>
+                          <p>{day.budget_notes}</p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
             
             {/* Plan Adjustment Section */}
             <div className="plan-adjustment-section">
@@ -2568,7 +2690,7 @@ function HomePage() {
               )}
             </div>
             
-            {/* Back Button */}
+            {/* Plan Actions */}
             <div className="plan-actions">
               <button 
                 className="back-btn"
@@ -2588,11 +2710,19 @@ function HomePage() {
                   setCustomPlan(null);
                   setHotels([]);
                   setPlanLoading(false);
-                  setIsSearchingHotels(false);
+                                          // setIsSearchingHotels(false);
                   setPlanAdjustment('');
                 }}
               >
                 ← Back to Planning
+              </button>
+              
+              <button 
+                className="pdf-btn"
+                onClick={generatePDF}
+                disabled={!customPlan || !selectedCity}
+              >
+                📄 Save to PDF
               </button>
             </div>
           </div>
@@ -2867,6 +2997,8 @@ function HomePage() {
       </div>
     </div>
   );
+
+
 }
 
 function App() {
