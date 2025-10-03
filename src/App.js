@@ -476,7 +476,12 @@ TOP ATTRACTIONS: ${attractions.map(a => a.name).join(', ')}
 9. Create destination-specific pro tips that combine local knowledge with practical travel advice
 10. Ensure all content is highly personalized to the destination, dates, and traveler preferences
 
+IMPORTANT: The destination is ${cityName}. Make sure all content is specifically about ${cityName}, not any other city.
+
 Respond ONLY with valid JSON matching the structure above.`;
+
+    console.log('🔍 DEBUG: Sending prompt to AI with cityName:', cityName);
+    console.log('🔍 DEBUG: Full prompt preview:', prompt.substring(0, 500) + '...');
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -509,6 +514,8 @@ Family = easygoing, kid-friendly options
 
 Make sure the plan feels thoughtful and practical, with flow and efficiency (e.g., nearby attractions grouped together, avoid backtracking). Budget level should influence food, lodging, and activity types—not just cost.
 
+CRITICAL: Always focus on the EXACT destination provided in the DESTINATION field. Do not substitute, change, or use any other city. If the destination is "Accra", create a plan for Accra, Ghana. If it's "Tokyo", create a plan for Tokyo, Japan. Never use Barcelona, Paris, or any other city unless explicitly specified in the DESTINATION field.
+
 Always respond with valid JSON.`
           },
           {
@@ -532,6 +539,9 @@ Always respond with valid JSON.`
     const data = await response.json();
     const planContent = data.choices[0].message.content;
     console.log('✅ Custom plan generated:', planContent);
+    console.log('🔍 DEBUG: AI response for cityName:', cityName);
+    console.log('🔍 DEBUG: Response contains Barcelona?', planContent.includes('Barcelona'));
+    console.log('🔍 DEBUG: Response contains Accra?', planContent.includes('Accra'));
     
     // Parse the JSON response
     try {
@@ -1600,6 +1610,11 @@ function HomePage() {
     setLoading(true);
     setAiLoading(true);
     
+    // Clear any previous custom plan and trip data to avoid stale state
+    setCustomPlan(null);
+    setCurrentTripData(null);
+    setShowCustomPlan(false);
+    
     // Validate and format city name for Amadeus API
     const validatedCity = await validateAndFormatCity(destination.trim());
     console.log('📍 Validated city:', validatedCity);
@@ -1682,6 +1697,8 @@ function HomePage() {
       setSummary(summaryData);
       setAttractions(attractionsData);
       setSelectedCity(cityName);
+      console.log('🔍 DEBUG: Setting selectedCity to:', cityName);
+      console.log('🔍 DEBUG: This should be the current destination:', destination);
       
       console.log('✅ Trip planning completed for:', cityName);
       setLoading(false);
@@ -1837,10 +1854,11 @@ function HomePage() {
 
   // Function to generate PDF
   const generatePDF = async () => {
-    if (!customPlan || !selectedCity) return;
+    if (!customPlan || !destination.trim()) return;
     
     try {
-      console.log('📄 Generating PDF for trip to:', selectedCity);
+      const currentCity = destination.trim();
+      console.log('📄 Generating PDF for trip to:', currentCity);
       
       // Create a temporary container for PDF content
       const pdfContainer = document.createElement('div');
@@ -1859,7 +1877,7 @@ function HomePage() {
       pdfContainer.innerHTML = `
         <div style="text-align: center; margin-bottom: 50px; padding: 40px 0; border-bottom: 3px solid #667eea;">
           <h1 style="color: #333; font-size: 42px; margin-bottom: 20px; font-weight: 700;">KUMO Travel Plan</h1>
-          <h2 style="color: #667eea; font-size: 28px; margin-bottom: 30px; font-weight: 600;">${selectedCity} - ${planningData.startDate} to ${planningData.endDate}</h2>
+          <h2 style="color: #667eea; font-size: 28px; margin-bottom: 30px; font-weight: 600;">${currentCity} - ${planningData.startDate} to ${planningData.endDate}</h2>
           <div style="display: flex; justify-content: center; gap: 40px; font-size: 16px; color: #555;">
             <span><strong>Travelers:</strong> ${planningData.partySize} ${planningData.travelerType}</span>
             <span><strong>Budget Level:</strong> ${planningData.budget}/5</span>
@@ -1870,7 +1888,7 @@ function HomePage() {
         <div style="margin-bottom: 60px; page-break-after: always;">
           <h3 style="color: #333; font-size: 32px; border-bottom: 3px solid #667eea; padding-bottom: 15px; margin-bottom: 30px; font-weight: 700;">TRIP OVERVIEW</h3>
           <div style="font-size: 16px; line-height: 1.8; color: #333;">
-            <p style="margin-bottom: 15px;"><strong>Destination:</strong> ${selectedCity}</p>
+            <p style="margin-bottom: 15px;"><strong>Destination:</strong> ${currentCity}</p>
             <p style="margin-bottom: 15px;"><strong>Duration:</strong> ${planningData.startDate} to ${planningData.endDate}</p>
             <p style="margin-bottom: 15px;"><strong>Total Budget:</strong> $${customPlan.total_budget || 'TBD'}</p>
             <p style="margin-bottom: 15px;"><strong>Daily Budget:</strong> $${customPlan.daily_budget || 'TBD'}</p>
@@ -2021,7 +2039,7 @@ function HomePage() {
       }
       
       // Save PDF
-      const fileName = `KUMO_Travel_Plan_${selectedCity}_${planningData.startDate}_${planningData.endDate}.pdf`;
+      const fileName = `KUMO_Travel_Plan_${currentCity}_${planningData.startDate}_${planningData.endDate}.pdf`;
       pdf.save(fileName);
       
       console.log('✅ PDF generated successfully:', fileName);
@@ -2219,14 +2237,27 @@ function HomePage() {
                       setPlanLoading(true);
                       
                       try {
-                        const plan = await generateCustomPlan(selectedCity, planningData, weather, attractions);
+                        console.log('🔍 DEBUG: selectedCity when generating plan:', selectedCity);
+                        console.log('🔍 DEBUG: destination from input:', destination);
+                        
+                        // Always use the most recent destination to avoid stale state issues
+                        // The destination input is the most reliable source of truth
+                        const currentCity = destination.trim();
+                        console.log('🔍 DEBUG: Using currentCity for plan generation:', currentCity);
+                        console.log('🔍 DEBUG: This ensures we use the latest search input, not stale state');
+                        
+                        // Validate that we have a proper city name
+                        if (!currentCity || currentCity.length < 2) {
+                          throw new Error('Invalid city name provided for plan generation');
+                        }
+                        const plan = await generateCustomPlan(currentCity, planningData, weather, attractions);
                         setCustomPlan(plan);
                         setShowCustomPlan(true);
                         setShowPlanningForm(false);
                         
                         // Store trip data for Kumo chatbot and localStorage
                         const tripData = {
-                          city: selectedCity,
+                          city: currentCity,
                           planningData: planningData,
                           weather: weather,
                           attractions: attractions,
@@ -2296,7 +2327,7 @@ function HomePage() {
                         
                         // Only search for hotels if we have valid dates and a selected city
                         let hotelResults = [];
-                        const cityToSearch = selectedCity || destination;
+                        const cityToSearch = destination.trim();
                         
                         if (startDate && endDate && cityToSearch) {
                           console.log('🏨 Searching hotels for:', cityToSearch, 'with dates:', startDate, 'to', endDate);
@@ -2640,7 +2671,10 @@ function HomePage() {
                       };
                       
                       // Generate new plan with adjustments
-                      const newPlan = await generateCustomPlan(selectedCity, adjustedPlanningData, weather, attractions);
+                      const currentCity = destination.trim();
+                      console.log('🔍 DEBUG: Using currentCity for plan adjustment:', currentCity);
+                      console.log('🔍 DEBUG: Using fresh destination input for plan adjustment');
+                      const newPlan = await generateCustomPlan(currentCity, adjustedPlanningData, weather, attractions);
                       setCustomPlan(newPlan);
                       
                       // Update trip data with new plan
@@ -2720,7 +2754,7 @@ function HomePage() {
               <button 
                 className="pdf-btn"
                 onClick={generatePDF}
-                disabled={!customPlan || !selectedCity}
+                disabled={!customPlan || !destination.trim()}
               >
                 📄 Save to PDF
               </button>
@@ -2728,9 +2762,9 @@ function HomePage() {
           </div>
         )}
         
-        {selectedCity && (
+        {destination.trim() && (
           <div className="destination-dashboard">
-            <h2>Your Trip to {selectedCity}</h2>
+            <h2>Your Trip to {destination.trim()}</h2>
             
             {aiLoading && (
               <div className="kumo-loading">
@@ -2781,7 +2815,7 @@ function HomePage() {
 
               {/* Summary Card */}
               <div className="dashboard-card summary-card">
-                <h3>📖 About {selectedCity}</h3>
+                <h3>📖 About {destination.trim()}</h3>
                 <div className="summary-content">
                   {summary.split('\n\n').map((paragraph, index) => (
                     <p key={index}>{paragraph}</p>
@@ -2818,7 +2852,7 @@ function HomePage() {
                   {attractions.slice(0, 3).map((attraction, index) => (
                     <div key={index} className="attraction-image-card">
                       <img 
-                        src={getAttractionImage(attraction.name, selectedCity, attraction.photoUrl)} 
+                        src={getAttractionImage(attraction.name, destination.trim(), attraction.photoUrl)} 
                         alt={attraction.name}
                         className="attraction-image"
                         onError={(e) => {
@@ -2853,7 +2887,7 @@ function HomePage() {
             hotels: hotels,
             attractions: attractions,
             weather: weather,
-            city: selectedCity,
+            city: destination.trim(),
             tripData: currentTripData
           }}
         />
